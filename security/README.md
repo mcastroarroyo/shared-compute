@@ -38,13 +38,21 @@ Advanced Security is available for the private repository.
 - Two independent CRITICAL Council objections block a security-critical change.
 - Missing Council votes fail closed.
 - Raw customer prompts/completions never enter Council context or audit records.
+- Council membership passes minimum security, calibration, and reliability scores, uses
+  at least five providers, reserves open-weight representation, and limits each provider
+  to two seats.
+- A signed result receipt is bound to its job, lease, device, workload, nonce, expiry,
+  result hash, and output ceiling before it can become a payable event.
 
 ## Live model adapters
 
-`Reviewer` is intentionally provider-neutral. Production adapters must return a
-`MemberReview`, enforce timeouts and output validation, and supply only structured facts.
+`StructuredModelReviewer` is intentionally provider-neutral. It enforces timeouts,
+strict output validation, bounded responses, and structured facts before producing a
+`MemberReview`.
 Credentials belong in a secret manager. No API keys or permanent model names are stored
 here. Council membership is a deployment configuration selected by capability,
 independence, and Ayni's qualification suite—not rank alone.
 
-See `constitution/AYNI_CONSTITUTION.md` and `threat-model/SECURITY_V0.1.md`.
+See `OWNERSHIP.md`, `constitution/AYNI_CONSTITUTION.md`,
+`threat-model/SECURITY_V0.1.md`, and
+`../docs/AGENT-COORDINATION-SECURITY-COUNCIL.md`.

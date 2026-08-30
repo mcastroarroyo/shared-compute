@@ -19,6 +19,13 @@ from .manifest import (
     WorkloadManifest,
 )
 from .replay import ReplayGuard
+from .receipts import (
+    JobAssignment,
+    ReceiptError,
+    ReceiptVerifier,
+    ResultReceipt,
+    SignedResultReceipt,
+)
 
 
 @dataclass(frozen=True)
@@ -146,8 +153,90 @@ def run_manifest_attacks(now: int | None = None) -> HarnessReport:
     return HarnessReport(tuple(results))
 
 
+def run_receipt_attacks(now: int | None = None) -> HarnessReport:
+    current = int(time.time() if now is None else now)
+    key = Ed25519PrivateKey.generate()
+    device_pk = b64encode(os.urandom(32)).decode()
+    assignment = JobAssignment(
+        job_id=str(uuid4()),
+        lease_id=str(uuid4()),
+        device_pk=device_pk,
+        workload_hash=_hash("assigned-workload"),
+        nonce=b64encode(os.urandom(24)).decode(),
+        expires_at=current + 120,
+        max_output_bytes=4_096,
+    )
+    receipt = ResultReceipt(
+        job_id=assignment.job_id,
+        lease_id=assignment.lease_id,
+        device_pk=device_pk,
+        workload_hash=assignment.workload_hash,
+        result_hash=_hash("result"),
+        nonce=assignment.nonce,
+        final_sequence=3,
+        output_bytes=2_048,
+        completed_at=current,
+    )
+    mutations = {
+        "receipt-wrong-job": replace(receipt, job_id=str(uuid4())),
+        "receipt-wrong-lease": replace(receipt, lease_id=str(uuid4())),
+        "receipt-wrong-device": replace(receipt, device_pk=b64encode(os.urandom(32)).decode()),
+        "receipt-wrong-workload": replace(receipt, workload_hash=_hash("other-workload")),
+        "receipt-wrong-challenge": replace(receipt, nonce=b64encode(os.urandom(24)).decode()),
+        "receipt-oversized-output": replace(receipt, output_bytes=4_097),
+        "receipt-future-timestamp": replace(receipt, completed_at=current + 31),
+    }
+    results: list[AttackResult] = []
+    for name, mutation in mutations.items():
+        verifier = ReceiptVerifier({device_pk: key.public_key()})
+        signed = SignedResultReceipt.sign(mutation, key)
+        try:
+            verifier.verify_and_consume(signed, assignment, now=current)
+            rejected = False
+        except ReceiptError:
+            rejected = True
+        results.append(AttackResult(name=name, rejected=rejected))
+
+    forged = SignedResultReceipt.sign(receipt, Ed25519PrivateKey.generate())
+    try:
+        ReceiptVerifier({device_pk: key.public_key()}).verify_and_consume(
+            forged, assignment, now=current
+        )
+        forged_rejected = False
+    except ReceiptError:
+        forged_rejected = True
+    results.append(AttackResult(name="receipt-forged-device-key", rejected=forged_rejected))
+
+    signed = SignedResultReceipt.sign(receipt, key)
+    tampered = replace(signed, receipt=replace(receipt, result_hash=_hash("fabricated-result")))
+    try:
+        ReceiptVerifier({device_pk: key.public_key()}).verify_and_consume(
+            tampered, assignment, now=current
+        )
+        tamper_rejected = False
+    except ReceiptError:
+        tamper_rejected = True
+    results.append(AttackResult(name="receipt-post-signature-tamper", rejected=tamper_rejected))
+
+    verifier = ReceiptVerifier({device_pk: key.public_key()})
+    verifier.verify_and_consume(signed, assignment, now=current)
+    try:
+        verifier.verify_and_consume(signed, assignment, now=current)
+        replay_rejected = False
+    except ReceiptError:
+        replay_rejected = True
+    results.append(AttackResult(name="receipt-payable-event-replay", rejected=replay_rejected))
+    return HarnessReport(tuple(results))
+
+
+def run_all_attacks(now: int | None = None) -> HarnessReport:
+    manifest = run_manifest_attacks(now)
+    receipts = run_receipt_attacks(now)
+    return HarnessReport(manifest.results + receipts.results)
+
+
 def main() -> int:
-    report = run_manifest_attacks()
+    report = run_all_attacks()
     for result in report.results:
         print(f"{'PASS' if result.rejected else 'FAIL'} {result.name}")
     return 0 if report.passed else 1

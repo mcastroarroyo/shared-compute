@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
 import json
@@ -70,8 +70,8 @@ def validate_roster(roster: Sequence[SeatAssignment]) -> None:
     seats = {assignment.seat for assignment in roster}
     if seats != set(SEAT_ROLES):
         raise ValueError("Council roster must fill each specialist seat exactly once")
-    if len({(a.provider, a.model_id) for a in roster}) != len(roster):
-        raise ValueError("Council assignments must be unique")
+    if len({a.model_id for a in roster}) != len(roster):
+        raise ValueError("Council model assignments must be unique")
     provider_counts: dict[str, int] = {}
     for assignment in roster:
         if not assignment.model_id or not assignment.provider:
