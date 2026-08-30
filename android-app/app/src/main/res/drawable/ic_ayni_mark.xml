@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- infinity ribbon: left lobe navy, right lobe teal -->
+    <path
+        android:strokeColor="#1B2A63"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M50,62 C50,46 26,46 26,62 C26,78 50,78 50,62" />
+    <path
+        android:strokeColor="#23B2A6"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M50,62 C50,46 74,46 74,62 C74,78 50,78 50,62" />
+
+    <!-- two heads above the loop -->
+    <path
+        android:fillColor="#1B2A63"
+        android:pathData="M30,30 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+    <path
+        android:fillColor="#23B2A6"
+        android:pathData="M53,25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+</vector>

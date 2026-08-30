@@ -14,6 +14,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -67,7 +69,15 @@ private fun App() {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Ayni Provider", style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Image(
+                painter = painterResource(R.drawable.ic_ayni_mark),
+                contentDescription = "Ayni",
+                modifier = Modifier.size(40.dp),
+            )
+            Text("Ayni Provider", style = MaterialTheme.typography.headlineSmall)
+        }
 
         StatusPill(status)
 
@@ -105,18 +115,56 @@ private fun App() {
         )
 
         val configured = s.isConfigured
+        val running = status.phase == ProviderController.Phase.CONNECTING ||
+            status.phase == ProviderController.Phase.REGISTERED ||
+            status.phase == ProviderController.Phase.BLOCKED
+        var confirmStop by remember { mutableStateOf(false) }
+        val ayniNavy = Color(0xFF1B2A63)
+        val stopRed = Color(0xFFB3261E)
+
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 enabled = configured,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (running) ayniNavy else MaterialTheme.colorScheme.primary,
+                    contentColor = if (running) Color.White else MaterialTheme.colorScheme.onPrimary,
+                ),
                 onClick = {
                     if (Build.VERSION.SDK_INT >= 33)
                         notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
                     ProviderService.start(ctx)
                 }
-            ) { Text("Start") }
-            OutlinedButton(onClick = { ProviderService.stop(ctx) }) { Text("Stop") }
+            ) { Text(if (running) "Sharing" else "Start") }
+
+            Button(
+                enabled = running,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = stopRed, contentColor = Color.White,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+                onClick = { confirmStop = true }
+            ) { Text("Stop") }
         }
         if (!configured) Text("Enter a registration token in Settings, then Start.")
+
+        if (confirmStop) AlertDialog(
+            onDismissRequest = { confirmStop = false },
+            title = { Text("Stop sharing compute with Ayni?") },
+            text = {
+                Text(
+                    "Your device will leave the Ayni network. Any job in progress is " +
+                        "dropped and you stop earning until you start again."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmStop = false; ProviderService.stop(ctx) }) {
+                    Text("Stop sharing", color = stopRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmStop = false }) { Text("Cancel") }
+            },
+        )
 
         Row(
             Modifier.fillMaxWidth(),

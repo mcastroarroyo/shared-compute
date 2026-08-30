@@ -21,6 +21,7 @@
 .env.*
 !.env.example
 *.pem
+!coordinator/internal/attest/roots/*.pem
 *.key
 !**/testdata/*.key
 secrets/
