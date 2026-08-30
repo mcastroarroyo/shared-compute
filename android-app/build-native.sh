@@ -39,6 +39,22 @@ echo "==> cross-compiling sc-mobile ($ABIS, api $API, $PROFILE) ${FEATURES:+[$FE
 ( cd "$CORE" && cargo ndk "${TARGETS_ARG[@]}" --platform "$API" -o "$JNILIBS" \
     build "${PROFILE_ARG[@]}" -p sc-mobile ${FEAT_ARG[@]+"${FEAT_ARG[@]}"} )
 
+# The llama feature links llama.cpp (C++), so libsc_mobile.so needs the NDK C++
+# runtime at load time. cargo-ndk doesn't copy it — do it ourselves per ABI.
+if [ -n "$FEATURES" ]; then
+  SYSROOT_LIB="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$(uname | tr '[:upper:]' '[:lower:]')-x86_64/sysroot/usr/lib"
+  for abi in $ABIS; do
+    case "$abi" in
+      arm64-v8a)   triple=aarch64-linux-android ;;
+      armeabi-v7a) triple=arm-linux-androideabi ;;
+      x86_64)      triple=x86_64-linux-android ;;
+      x86)         triple=i686-linux-android ;;
+    esac
+    src="$SYSROOT_LIB/$triple/libc++_shared.so"
+    [ -f "$src" ] && cp "$src" "$JNILIBS/$abi/" && echo "    + bundled libc++_shared.so ($abi)"
+  done
+fi
+
 echo "==> generating uniffi Kotlin bindings"
 # NOTE: uniffi-bindgen cannot extract proc-macro metadata from the cross-compiled
 # aarch64 .so on a macOS host (it silently emits nothing and exits 0). Generate from
