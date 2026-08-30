@@ -28,15 +28,15 @@ FEATURES="${FEATURES:-}"
 FEAT_ARG=()
 [ -n "$FEATURES" ] && FEAT_ARG=(--features "$FEATURES")
 PROFILE_ARG=(--release)
-[ "$PROFILE" = "debug" ] && PROFILE_ARG=()
+[ "$PROFILE" = "debug" ] && PROFILE_ARG=(--profile dev)
 
 TARGETS_ARG=()
 for abi in $ABIS; do TARGETS_ARG+=(-t "$abi"); done
 
+JNILIBS="$(mkdir -p app/src/main/jniLibs && cd app/src/main/jniLibs && pwd)"
 echo "==> cross-compiling sc-mobile ($ABIS, api $API, $PROFILE) ${FEATURES:+[$FEATURES]}"
-( cd "$CORE" && cargo ndk "${TARGETS_ARG[@]}" --platform "$API" \
-    -o "$(cd "$OLDPWD/app/src/main/jniLibs" && pwd)" \
-    build "${PROFILE_ARG[@]}" -p sc-mobile "${FEAT_ARG[@]}" )
+( cd "$CORE" && cargo ndk "${TARGETS_ARG[@]}" --platform "$API" -o "$JNILIBS" \
+    build "${PROFILE_ARG[@]}" -p sc-mobile ${FEAT_ARG[@]+"${FEAT_ARG[@]}"} )
 
 echo "==> generating uniffi Kotlin bindings"
 FIRST_ABI="${ABIS%% *}"

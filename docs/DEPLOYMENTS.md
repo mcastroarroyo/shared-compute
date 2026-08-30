@@ -7,6 +7,17 @@
 | Operator console | https://ayni-console.pages.dev | Cloudflare Pages `ayni-console` (auto-deploy on push to `main`) |
 | Source | github.com/mcastroarroyo/shared-compute (private) | GitHub Actions CI on every push |
 
+## Android provider — M5 (verified)
+
+`android-app/` builds `app-debug.apk` (`dev.ayni.provider`, 13 MB). Verified on an
+android-35 arm64 emulator: the app registered on `wss://api.ayni-ai.com/ws/provider`,
+appeared in `/admin/providers` as `platform=android arch=aarch64`, and served an
+encrypted `mock-echo` completion routed to it. Distribution to Google Play (org account:
+**Zalesgen LLC**, D-U-N-S on file), internal-testing track, is the remaining step.
+
+Note: the workspace TLS roots were switched from `rustls-tls-native-roots` to
+`rustls-tls-webpki-roots` — native-roots has no usable trust store on Android.
+
 ## Console — M4
 
 Cloudflare Pages project **`ayni-console`**, connected to the GitHub repo:

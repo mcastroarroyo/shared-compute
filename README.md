@@ -21,7 +21,7 @@ Pre-alpha. Building milestone by milestone — see
 | M2 | Coordinator online (Fly.io) with TLS | **done** — https://api.ayni-ai.com (Fly.io + Postgres, Let's Encrypt) |
 | M3 | Model registry (Cloudflare R2) + macOS/Linux provider packaging | **done** — https://models.ayni-ai.com serving signed manifest + Qwen 0.5B; verified download works |
 | M4 | Scheduler, trust tiers, metering, web console | **done** — console live at https://ayni-console.pages.dev (Cloudflare Pages, auto-deploy); coordinator catalog + scheduler + rate limits + admin API on api.ayni-ai.com |
-| M5 | Android provider app | — |
+| M5 | Android provider app | **verified** — `dev.ayni.provider` registered on the live coordinator from an emulator over wss:// and served an encrypted inference; APK 13MB. Play internal-testing upload pending |
 | M6 | Android acceleration + hardware attestation (Tier 1) | — |
 | M7 | Linux/Windows device attestation (Tier 1) | — |
 | M8 | Confidential compute (Tier 2) | — |
