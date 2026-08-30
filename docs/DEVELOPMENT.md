@@ -20,6 +20,25 @@ sudo ln -sfn /opt/homebrew/opt/openjdk/libexec/openjdk.jdk \
   /Library/Java/JavaVirtualMachines/openjdk.jdk
 ```
 
+## Android (M5+)
+
+```bash
+brew install --cask android-commandlinetools
+brew install rustup && rustup default stable
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cargo install cargo-ndk
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+yes | sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
+           "ndk;27.2.12479018" "cmake;3.22.1"
+```
+
+`android-app/build-native.sh` cross-compiles `provider-core/sc-mobile` and regenerates the
+uniffi Kotlin bindings. It uses **rustup's** toolchain (Homebrew's `rustc` has no Android
+`std`) — the script sets `CARGO=/opt/homebrew/opt/rustup/bin/cargo` for you.
+
+Then `cd android-app && ./gradlew :app:assembleDebug`.
+
 ## llama.cpp
 
 Vendored as a git submodule at `provider-core/sc-inference/vendor/llama.cpp`.

@@ -9,7 +9,9 @@ members = [
     "sc-inference",
     "sc-telemetry",
     "sc-attest",
+    "provider-lib",
     "provider-daemon",
+    "sc-mobile",
 ]
 
 [workspace.package]

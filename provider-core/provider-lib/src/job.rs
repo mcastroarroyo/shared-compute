@@ -56,29 +56,37 @@ pub async fn handle_job(
     tx: UnboundedSender<WsMessage>,
     cancel: CancellationToken,
     active: Arc<AtomicU32>,
-) {
+) -> bool {
     active.fetch_add(1, Ordering::Relaxed);
     let _guard = ActiveGuard(active);
     let job_id = jr.job_id.clone();
 
     let epk = match parse_public(&jr.sealed.epk) {
         Ok(k) => k,
-        Err(_) => return job_error(&tx, &job_id, "decrypt"),
+        Err(_) => {
+            job_error(&tx, &job_id, "decrypt");
+            return false;
+        }
     };
     let plaintext = match box_open(&jr.sealed, &epk, &identity.secret) {
         Ok(p) => p,
         Err(_) => {
             warn!(job_id = %job_id, "sealed request failed to open");
-            return job_error(&tx, &job_id, "decrypt");
+            job_error(&tx, &job_id, "decrypt");
+            return false;
         }
     };
     let pt: proto::JobRequestPlaintext = match serde_json::from_slice(&plaintext) {
         Ok(p) => p,
-        Err(_) => return job_error(&tx, &job_id, "internal"),
+        Err(_) => {
+            job_error(&tx, &job_id, "internal");
+            return false;
+        }
     };
 
     if !backend.has_model(&pt.model) {
-        return job_error(&tx, &job_id, "model-missing");
+        job_error(&tx, &job_id, "model-missing");
+        return false;
     }
 
     let req = InferenceRequest {
@@ -145,6 +153,8 @@ pub async fn handle_job(
             };
             warn!(job_id = %job_id, code, "job failed");
             job_error(&tx, &job_id, code);
+            return false;
         }
     }
+    true
 }

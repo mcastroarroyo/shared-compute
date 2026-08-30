@@ -1,10 +1,14 @@
 [package]
-name = "provider-daemon"
+name = "sc-mobile"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-default-run = "provider-daemon"
+publish = false
+
+[lib]
+name = "sc_mobile"
+crate-type = ["cdylib", "lib"]
 
 [features]
 default = []
@@ -12,11 +16,14 @@ llama = ["provider-lib/llama"]
 
 [dependencies]
 provider-lib = { path = "../provider-lib" }
-
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
+uniffi = { version = "0.29", features = ["cli"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 tokio-util.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-anyhow.workspace = true
-clap.workspace = true
+tracing-subscriber = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
