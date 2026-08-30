@@ -33,7 +33,6 @@ func (s *Server) withAdmin(next http.HandlerFunc) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "admin token required")
 			return
 		}
-		w.Header().Set("Access-Control-Allow-Origin", "*") // console is a separate origin
 		next(w, r)
 	})
 }

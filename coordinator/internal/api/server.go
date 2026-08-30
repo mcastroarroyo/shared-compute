@@ -54,15 +54,25 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	s.mountAdmin(mux)
-	if s.cfg.AdminToken != "" {
-		mux.HandleFunc("OPTIONS /admin/", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+	return withCORS(logRequests(s.log, mux))
+}
+
+// withCORS makes the API reachable from the browser console (a separate origin). It is
+// permissive because every endpoint already authenticates with a bearer token or admin
+// token; no cookies are used.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Vary", "Origin")
+		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Admin-Token, Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "600")
 			w.WriteHeader(http.StatusNoContent)
-		})
-	}
-	return logRequests(s.log, mux)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // statusRecorder captures the response status for metrics.
