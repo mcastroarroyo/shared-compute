@@ -133,10 +133,22 @@ Grab `provider-daemon` from a GitHub Release (built by `.github/workflows/releas
 
 ## M4 — console
 
-- **Vercel** (<https://vercel.com/signup>) or **Cloudflare Pages** — connect the GitHub repo,
-  set the project root to `console/`.
-- **Clerk** (<https://dashboard.clerk.com>) or Auth.js — create an application, copy the
-  publishable + secret keys into the host's env vars.
+Coordinator side is already deployed (`api.ayni-ai.com`): signed-manifest `/v1/models`,
+capability scheduler, per-key rate limits, and `/admin/*` (gated by the `SC_ADMIN_TOKEN`
+secret already set on Fly — value is in `.env.local`). No new account needed for those.
+
+The `console/` app is a **static** Next.js export — it only calls the coordinator from the
+browser. Deploy it to **Cloudflare Pages** (same Cloudflare account, no card):
+
+1. Cloudflare dash → **Workers & Pages → Create → Pages → Connect to Git** → pick the repo
+2. **Root directory:** `console`
+3. **Build command:** `npm run build`  ·  **Build output directory:** `out`
+4. **Environment variable:** `NEXT_PUBLIC_COORDINATOR_URL = https://api.ayni-ai.com`
+5. (optional) custom domain `console.ayni-ai.com`
+6. Open the deployed site → **Settings** → paste the admin token + a consumer key
+
+Full multi-user auth (Clerk / Auth.js) is deferred to M9; the console is single-operator
+for now.
 
 ## M5 — Android
 
