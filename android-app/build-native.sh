@@ -39,12 +39,26 @@ echo "==> cross-compiling sc-mobile ($ABIS, api $API, $PROFILE) ${FEATURES:+[$FE
     build "${PROFILE_ARG[@]}" -p sc-mobile ${FEAT_ARG[@]+"${FEAT_ARG[@]}"} )
 
 echo "==> generating uniffi Kotlin bindings"
+# NOTE: uniffi-bindgen cannot extract proc-macro metadata from the cross-compiled
+# aarch64 .so on a macOS host (it silently emits nothing and exits 0). Generate from
+# a freshly built *host* cdylib instead — the Kotlin interface + checksums are defined
+# by the Rust source and are identical across targets.
 FIRST_ABI="${ABIS%% *}"
-SO="app/src/main/jniLibs/$FIRST_ABI/libsc_mobile.so"
 OUT="app/src/main/java"
+KT="$OUT/uniffi/sc_mobile/sc_mobile.kt"
 mkdir -p "$OUT"
+rm -f "$KT"
+( cd "$CORE" && cargo build -q -p sc-mobile ${FEAT_ARG[@]+"${FEAT_ARG[@]}"} )
+HOSTLIB="$CORE/target/debug/libsc_mobile.dylib"
+[ -f "$HOSTLIB" ] || HOSTLIB="$CORE/target/debug/libsc_mobile.so"
+[ -f "$HOSTLIB" ] || { echo "host cdylib not found for bindgen"; exit 1; }
 ( cd "$CORE" && cargo run -q -p sc-mobile --bin uniffi-bindgen -- \
-    generate --library "$OLDPWD/$SO" --language kotlin --out-dir "$OLDPWD/$OUT" )
+    generate --library "$OLDPWD/$HOSTLIB" --language kotlin --out-dir "$OLDPWD/$OUT" )
+[ -f "$KT" ] || { echo "ERROR: uniffi-bindgen produced no $KT"; exit 1; }
+# Guard against the exact bug that shipped: bindings older than the packaged .so.
+if [ "$KT" -ot "app/src/main/jniLibs/$FIRST_ABI/libsc_mobile.so" ]; then
+  echo "ERROR: $KT is older than libsc_mobile.so — regeneration failed"; exit 1
+fi
 
 echo "==> done"
 find app/src/main/jniLibs -name '*.so' -exec ls -lh {} \;

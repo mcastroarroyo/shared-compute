@@ -203,11 +203,20 @@ fn init_logging() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
+        let filter = tracing_subscriber::EnvFilter::try_from_env("SC_LOG").unwrap_or_else(|_| {
+            tracing_subscriber::EnvFilter::new("info,sc_mobile=debug,provider_lib=debug")
+        });
+        #[cfg(target_os = "android")]
+        {
+            use tracing_subscriber::layer::SubscriberExt;
+            use tracing_subscriber::util::SubscriberInitExt;
+            if let Ok(logcat) = tracing_android::layer("ayni-provider") {
+                let _ = tracing_subscriber::registry().with(filter).with(logcat).try_init();
+                return;
+            }
+        }
         let _ = tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_env("SC_LOG")
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sc_mobile=debug")),
-            )
+            .with_env_filter(filter)
             .with_ansi(false)
             .try_init();
     });
