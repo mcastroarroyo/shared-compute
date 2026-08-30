@@ -57,6 +57,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	mux.Handle("POST /waitlist", instrument("waitlist", http.HandlerFunc(s.handleWaitlist)))
 	mux.Handle("POST /initiatives", instrument("initiatives", http.HandlerFunc(s.handleInitiative)))
+	mux.Handle("GET /billing/balance", instrument("billing_balance", s.withAuth(s.handleBalance)))
+	mux.Handle("POST /billing/checkout", instrument("billing_checkout", s.withAuth(s.handleCheckout)))
+	mux.Handle("POST /billing/webhook", instrument("billing_webhook", http.HandlerFunc(s.handleStripeWebhook)))
 	s.mountAdmin(mux)
 	return withCORS(logRequests(s.log, mux))
 }

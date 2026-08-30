@@ -25,6 +25,11 @@ type Mem struct {
 	earningRows []EarningRow
 	waitlist    []WaitlistEntry
 	proposals   []Proposal
+	credits     map[string]int64         // key_id -> micros
+	topupRefs   map[string]struct{}      // idempotency for topups
+	payoutAccts map[string]PayoutAccount // static_pk -> account
+	accrued     map[string]*ProviderAccrual
+	nextPayout  int64
 	usage       atomic.Int64
 }
 
@@ -39,11 +44,15 @@ func NewMem(consumerKeys, providerTokens map[string]struct{}) *Mem {
 		toks[t] = struct{}{}
 	}
 	return &Mem{
-		keys:      keys,
-		keyInfo:   map[string]KeyInfo{},
-		tokens:    toks,
-		rawByID:   map[string]string{},
-		providers: map[string]ProviderRecord{},
+		keys:        keys,
+		keyInfo:     map[string]KeyInfo{},
+		tokens:      toks,
+		rawByID:     map[string]string{},
+		providers:   map[string]ProviderRecord{},
+		credits:     map[string]int64{},
+		topupRefs:   map[string]struct{}{},
+		payoutAccts: map[string]PayoutAccount{},
+		accrued:     map[string]*ProviderAccrual{},
 	}
 }
 
@@ -163,7 +172,74 @@ func (m *Mem) RecordEarning(_ context.Context, ev EarningEvent) error {
 		ProviderID: ev.ProviderID, Jobs: 1,
 		GrossMicros: ev.GrossMicros, ProviderMicros: ev.ProviderMicros,
 	})
+	if ev.StaticPK != "" {
+		a := m.accrued[ev.StaticPK]
+		if a == nil {
+			a = &ProviderAccrual{StaticPK: ev.StaticPK}
+			m.accrued[ev.StaticPK] = a
+		}
+		a.Jobs++
+		a.OwedMicros += ev.ProviderMicros
+	}
 	return nil
+}
+
+func (m *Mem) CreditBalance(_ context.Context, keyID string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.credits[keyID], nil
+}
+
+func (m *Mem) AddCredit(_ context.Context, keyID string, deltaMicros int64, reason, stripeRef, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if reason == "topup" && stripeRef != "" {
+		if _, seen := m.topupRefs[stripeRef]; seen {
+			return nil
+		}
+		m.topupRefs[stripeRef] = struct{}{}
+	}
+	m.credits[keyID] += deltaMicros
+	return nil
+}
+
+func (m *Mem) UpsertPayoutAccount(_ context.Context, a PayoutAccount) error {
+	m.mu.Lock()
+	m.payoutAccts[a.StaticPK] = a
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Mem) GetPayoutAccount(_ context.Context, staticPK string) (PayoutAccount, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.payoutAccts[staticPK]
+	return a, ok, nil
+}
+
+func (m *Mem) AccruedByProvider(_ context.Context) ([]ProviderAccrual, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []ProviderAccrual
+	for _, a := range m.accrued {
+		if a.OwedMicros > 0 {
+			out = append(out, *a)
+		}
+	}
+	return out, nil
+}
+
+func (m *Mem) RecordPayoutAndSettle(_ context.Context, po PayoutRecord) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextPayout++
+	if po.State == "created" {
+		if a := m.accrued[po.StaticPK]; a != nil {
+			a.Jobs = 0
+			a.OwedMicros = 0
+		}
+	}
+	return m.nextPayout, nil
 }
 
 func (m *Mem) EarningsSince(_ context.Context, _ time.Time) ([]EarningRow, error) {

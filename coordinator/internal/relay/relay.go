@@ -6,6 +6,7 @@ package relay
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +42,7 @@ type Result struct {
 	Usage        protocol.Usage
 	FinishReason string
 	ProviderID   string
+	ProviderPK   string // base64 X25519 static key — the durable payout identity
 	TrustTier    string
 	JobID        string
 }
@@ -152,6 +154,7 @@ func Execute(ctx context.Context, d Deps, req Request, onDelta func(string) erro
 					Usage:        jd.Usage,
 					FinishReason: jd.FinishReason,
 					ProviderID:   prov.ID,
+					ProviderPK:   base64.StdEncoding.EncodeToString(prov.StaticPK[:]),
 					TrustTier:    prov.TrustTier,
 					JobID:        jobID,
 				}, nil

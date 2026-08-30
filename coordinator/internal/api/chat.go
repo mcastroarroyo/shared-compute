@@ -79,6 +79,15 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	// Prepaid-credit gate (opt-in via SC_BILLING_ENFORCE=1).
+	if s.cfg.BillingEnforce {
+		if bal, _ := s.store.CreditBalance(r.Context(), keyIDFrom(r.Context())); bal <= 0 {
+			writeError(w, http.StatusPaymentRequired, "insufficient_credit",
+				"add credits at /billing/checkout")
+			return
+		}
+	}
+
 	id := "chatcmpl-" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	created := time.Now().Unix()
 
@@ -146,6 +155,7 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 		res.Usage.PromptTokens, res.Usage.CompletionTokens, 1.0)
 	if e := s.store.RecordEarning(context.WithoutCancel(ctx), store.EarningEvent{
 		ProviderID:     res.ProviderID,
+		StaticPK:       res.ProviderPK,
 		KeyID:          keyIDFrom(ctx),
 		Model:          model,
 		ModelClass:     q.ModelClass,
@@ -154,6 +164,12 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 		ProviderMicros: q.ProviderMicros,
 	}); e != nil {
 		s.log.Warn("record earning failed", "err", e)
+	}
+	// Debit the consumer's prepaid balance (allowed to go slightly negative;
+	// the pre-flight gate blocks the next request).
+	if e := s.store.AddCredit(context.WithoutCancel(ctx), keyIDFrom(ctx),
+		-q.GrossMicros, "debit", "", res.JobID); e != nil {
+		s.log.Warn("credit debit failed", "err", e)
 	}
 }
 

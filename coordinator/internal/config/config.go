@@ -29,6 +29,17 @@ type Config struct {
 	RatePerMin int
 	// AdminToken gates /admin/* (key management, provider list, usage). Empty = disabled.
 	AdminToken string
+
+	// --- billing / payouts (Stripe). All optional; empty StripeSecretKey disables. ---
+	// StripeSecretKey is the Stripe API key (sk_test_… or sk_live_…).
+	StripeSecretKey string
+	// StripeWebhookSecret verifies /billing/webhook signatures (whsec_…).
+	StripeWebhookSecret string
+	// PublicBaseURL is where Stripe Checkout redirects back to (the console or site).
+	PublicBaseURL string
+	// BillingEnforce, when true, rejects inference from a consumer key with a
+	// non-positive credit balance (402). Off by default so nothing breaks until opt-in.
+	BillingEnforce bool
 }
 
 func Load() (Config, error) {
@@ -43,6 +54,10 @@ func Load() (Config, error) {
 		DatabaseURL:                getenv("SC_DATABASE_URL", ""),
 		RatePerMin:                 getenvInt("SC_RATE_PER_MIN", 120),
 		AdminToken:                 getenv("SC_ADMIN_TOKEN", ""),
+		StripeSecretKey:            getenv("SC_STRIPE_SECRET_KEY", ""),
+		StripeWebhookSecret:        getenv("SC_STRIPE_WEBHOOK_SECRET", ""),
+		PublicBaseURL:              strings.TrimRight(getenv("SC_PUBLIC_BASE_URL", "https://ayni-ai.com"), "/"),
+		BillingEnforce:             getenv("SC_BILLING_ENFORCE", "") == "1",
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

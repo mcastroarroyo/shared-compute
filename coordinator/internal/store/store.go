@@ -49,10 +49,10 @@ type UsageRow struct {
 	CompletionTokens int64  `json:"completion_tokens"`
 }
 
-// EarningEvent is one job's shadow-accrual for a provider (see docs/PAYMENTS.md).
-// No money moves; this is the ledger the payout runs will read once Stripe is wired.
+// EarningEvent is one job's accrual for a provider (see docs/PAYMENTS.md).
 type EarningEvent struct {
 	ProviderID     string
+	StaticPK       string // base64 X25519 — the durable payout identity
 	KeyID          string
 	Model          string
 	ModelClass     string
@@ -60,6 +60,29 @@ type EarningEvent struct {
 	GrossMicros    int64
 	ProviderMicros int64
 	CreatedAt      time.Time
+}
+
+// ProviderAccrual is unpaid provider_earnings summed per payout identity.
+type ProviderAccrual struct {
+	StaticPK   string `json:"static_pk"`
+	Jobs       int    `json:"jobs"`
+	OwedMicros int64  `json:"owed_micros"`
+}
+
+// PayoutAccount links a provider identity to a Stripe Connect account.
+type PayoutAccount struct {
+	StaticPK      string `json:"static_pk"`
+	StripeAccount string `json:"stripe_account"`
+	Status        string `json:"status"` // pending | enabled | disabled
+}
+
+// PayoutRecord is one completed transfer to a provider.
+type PayoutRecord struct {
+	StaticPK       string
+	StripeAccount  string
+	AmountMicros   int64
+	StripeTransfer string
+	State          string
 }
 
 // EarningRow aggregates provider_earnings per provider for the admin view.
@@ -120,6 +143,24 @@ type Store interface {
 	// WaitlistSince / ProposalsSince are admin reads.
 	WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error)
 	ProposalsSince(ctx context.Context, t time.Time) ([]Proposal, error)
+
+	// --- billing / payouts ---
+
+	// CreditBalance returns a consumer key's credit balance in micro-USD (0 if none).
+	CreditBalance(ctx context.Context, keyID string) (int64, error)
+	// AddCredit applies a signed delta and appends a ledger row. For reason "topup"
+	// a non-empty stripeRef makes it idempotent (a duplicate returns nil, no change).
+	AddCredit(ctx context.Context, keyID string, deltaMicros int64, reason, stripeRef, jobID string) error
+
+	// UpsertPayoutAccount links (or updates) a Stripe Connect account for a provider identity.
+	UpsertPayoutAccount(ctx context.Context, a PayoutAccount) error
+	// GetPayoutAccount returns the linked account for a provider identity, if any.
+	GetPayoutAccount(ctx context.Context, staticPK string) (PayoutAccount, bool, error)
+	// AccruedByProvider sums unpaid provider_earnings per payout identity.
+	AccruedByProvider(ctx context.Context) ([]ProviderAccrual, error)
+	// RecordPayoutAndSettle inserts a payout row and marks that identity's accrued
+	// earnings paid, in one transaction. Returns the new payout id.
+	RecordPayoutAndSettle(ctx context.Context, p PayoutRecord) (int64, error)
 
 	// --- admin / console ---
 

@@ -24,6 +24,10 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.Handle("GET /admin/earnings", s.withAdmin(s.adminEarnings))
 	mux.Handle("GET /admin/waitlist", s.withAdmin(s.adminWaitlist))
 	mux.Handle("GET /admin/proposals", s.withAdmin(s.adminProposals))
+	mux.Handle("POST /admin/payouts/connect", s.withAdmin(s.adminPayoutConnect))
+	mux.Handle("POST /admin/payouts/connect/refresh", s.withAdmin(s.adminPayoutRefresh))
+	mux.Handle("GET /admin/payouts/pending", s.withAdmin(s.adminPayoutsPending))
+	mux.Handle("POST /admin/payouts/run", s.withAdmin(s.adminPayoutsRun))
 }
 
 func (s *Server) withAdmin(next http.HandlerFunc) http.Handler {
