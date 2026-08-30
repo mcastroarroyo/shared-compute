@@ -70,6 +70,26 @@ type EarningRow struct {
 	ProviderMicros int64  `json:"provider_micros"`
 }
 
+// WaitlistEntry is one public waitlist signup from the marketing site.
+type WaitlistEntry struct {
+	Email     string    `json:"email"`
+	Interest  string    `json:"interest"`
+	Note      string    `json:"note"`
+	IPHash    string    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Proposal is one submitted community-initiative proposal.
+type Proposal struct {
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	Title     string    `json:"title"`
+	Summary   string    `json:"summary"`
+	Link      string    `json:"link"`
+	IPHash    string    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Store is the coordinator's persistence boundary.
 type Store interface {
 	// Migrate applies any pending schema migrations. No-op for the memory store.
@@ -92,6 +112,14 @@ type Store interface {
 
 	// EarningsSince aggregates provider_earnings per provider since t.
 	EarningsSince(ctx context.Context, t time.Time) ([]EarningRow, error)
+
+	// AddWaitlist stores a public waitlist signup. Idempotent on email.
+	AddWaitlist(ctx context.Context, e WaitlistEntry) error
+	// AddProposal stores a submitted initiative proposal.
+	AddProposal(ctx context.Context, p Proposal) error
+	// WaitlistSince / ProposalsSince are admin reads.
+	WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error)
+	ProposalsSince(ctx context.Context, t time.Time) ([]Proposal, error)
 
 	// --- admin / console ---
 

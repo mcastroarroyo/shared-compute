@@ -22,6 +22,8 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.Handle("GET /admin/providers", s.withAdmin(s.adminProviders))
 	mux.Handle("GET /admin/usage", s.withAdmin(s.adminUsage))
 	mux.Handle("GET /admin/earnings", s.withAdmin(s.adminEarnings))
+	mux.Handle("GET /admin/waitlist", s.withAdmin(s.adminWaitlist))
+	mux.Handle("GET /admin/proposals", s.withAdmin(s.adminProposals))
 }
 
 func (s *Server) withAdmin(next http.HandlerFunc) http.Handler {

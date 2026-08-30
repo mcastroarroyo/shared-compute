@@ -27,22 +27,24 @@ type ctxKey int
 const ctxKeyID ctxKey = 0
 
 type Server struct {
-	cfg   config.Config
-	reg   *registry.Registry
-	job   *jobs.Manager
-	store store.Store
-	cat   *catalog.Catalog
-	rl    *ratelimit.Limiter
-	log   *slog.Logger
-	hub   *wshub.Hub
+	cfg      config.Config
+	reg      *registry.Registry
+	job      *jobs.Manager
+	store    store.Store
+	cat      *catalog.Catalog
+	rl       *ratelimit.Limiter
+	intakeRL *ratelimit.Limiter
+	log      *slog.Logger
+	hub      *wshub.Hub
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
 	return &Server{
 		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
-		rl:  ratelimit.New(cfg.RatePerMin),
-		log: log,
-		hub: &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
+		rl:       ratelimit.New(cfg.RatePerMin),
+		intakeRL: ratelimit.New(6), // public site forms: 6/min per IP
+		log:      log,
+		hub:      &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
 	}
 }
 
@@ -53,6 +55,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
+	mux.Handle("POST /waitlist", instrument("waitlist", http.HandlerFunc(s.handleWaitlist)))
+	mux.Handle("POST /initiatives", instrument("initiatives", http.HandlerFunc(s.handleInitiative)))
 	s.mountAdmin(mux)
 	return withCORS(logRequests(s.log, mux))
 }

@@ -81,3 +81,15 @@ jobs:
         with:
           workspaces: provider-core
       - run: ./e2e-tests/run.sh
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: site
+        run: npm install
+      - working-directory: site
+        run: npm run build

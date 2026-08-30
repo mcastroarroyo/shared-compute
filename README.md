@@ -1,4 +1,4 @@
-# shared-compute
+# Ayni
 
 A decentralized **private-inference network**. Idle devices (macOS, Linux, Windows,
 Android) act as inference providers. A consumer calls an OpenAI-compatible API; a
@@ -6,8 +6,16 @@ coordinator authenticates, schedules, and relays an **end-to-end-encrypted** req
 provider device, which runs the model locally with `llama.cpp` and streams encrypted
 tokens back.
 
-> **Working name.** `shared-compute` is a placeholder. Pick a production name with no
-> association to any existing product before public launch.
+Compute sharing is the first initiative of **Ayni** — a community for sharing the
+benefits and value of AI broadly. See [`WHITEPAPER.md`](WHITEPAPER.md), the
+[manifesto](https://ayni-ai.com/manifesto/), and [`docs/PAYMENTS.md`](docs/PAYMENTS.md).
+
+**License:** Apache 2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)). Clean-room
+implementation — no source from any proprietary project.
+
+> **Legal note.** Independent legal review of the "compete with Darkbloom" clause in
+> Eigen Labs' license, and a trademark check on the name, are still required before
+> general availability. The repo directory is still named `shared-compute`.
 
 ## Status
 

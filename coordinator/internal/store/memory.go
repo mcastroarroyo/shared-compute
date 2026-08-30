@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,8 @@ type Mem struct {
 	providers   map[string]ProviderRecord
 	usageRows   []UsageRow
 	earningRows []EarningRow
+	waitlist    []WaitlistEntry
+	proposals   []Proposal
 	usage       atomic.Int64
 }
 
@@ -168,6 +171,42 @@ func (m *Mem) EarningsSince(_ context.Context, _ time.Time) ([]EarningRow, error
 	defer m.mu.Unlock()
 	out := make([]EarningRow, len(m.earningRows))
 	copy(out, m.earningRows)
+	return out, nil
+}
+
+func (m *Mem) AddWaitlist(_ context.Context, e WaitlistEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.waitlist {
+		if strings.EqualFold(m.waitlist[i].Email, e.Email) {
+			m.waitlist[i] = e
+			return nil
+		}
+	}
+	m.waitlist = append(m.waitlist, e)
+	return nil
+}
+
+func (m *Mem) AddProposal(_ context.Context, p Proposal) error {
+	m.mu.Lock()
+	m.proposals = append(m.proposals, p)
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Mem) WaitlistSince(_ context.Context, _ time.Time) ([]WaitlistEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]WaitlistEntry, len(m.waitlist))
+	copy(out, m.waitlist)
+	return out, nil
+}
+
+func (m *Mem) ProposalsSince(_ context.Context, _ time.Time) ([]Proposal, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Proposal, len(m.proposals))
+	copy(out, m.proposals)
 	return out, nil
 }
 

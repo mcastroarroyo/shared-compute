@@ -1,0 +1,18 @@
+Ayni — a community private-inference network
+Copyright 2026 Zalesgen LLC
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This is a clean-room implementation. It contains no source from
+Layr-Labs/d-inference (Darkbloom) or any other proprietary project. It is built
+from generic, publicly documented primitives: WebSockets, NaCl/libsodium
+(crypto_box: X25519 + XSalsa20-Poly1305), llama.cpp's C API, GGUF, SHA-256
+manifests, Ed25519 signatures, and standard platform attestation APIs
+(Android StrongBox / Key Attestation, TPM 2.0, Windows VBS, AVF/pKVM).
+
+Bundled and depended-upon components retain their own licenses, including:
+  - llama.cpp (MIT), vendored under provider-core/sc-inference/vendor/
+  - Rust and Go dependencies as listed in Cargo.lock / go.sum
+
+"Ayni" and the Ayni logo are trademarks of Zalesgen LLC. The Apache 2.0 license
+covers the code, not the marks.

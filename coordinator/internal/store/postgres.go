@@ -202,6 +202,65 @@ func (p *PG) EarningsSince(ctx context.Context, t time.Time) ([]EarningRow, erro
 	return out, rows.Err()
 }
 
+func (p *PG) AddWaitlist(ctx context.Context, e WaitlistEntry) error {
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := p.pool.Exec(ct, `
+		INSERT INTO waitlist (email, interest, note, ip_hash)
+		VALUES ($1,$2,$3,$4)
+		ON CONFLICT (lower(email)) DO UPDATE SET interest = EXCLUDED.interest, note = EXCLUDED.note`,
+		e.Email, e.Interest, e.Note, e.IPHash)
+	return err
+}
+
+func (p *PG) AddProposal(ctx context.Context, pr Proposal) error {
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := p.pool.Exec(ct, `
+		INSERT INTO proposals (name, email, title, summary, link, ip_hash)
+		VALUES ($1,$2,$3,$4,$5,$6)`,
+		pr.Name, pr.Email, pr.Title, pr.Summary, pr.Link, pr.IPHash)
+	return err
+}
+
+func (p *PG) WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT email, interest, note, created_at FROM waitlist
+		WHERE created_at >= $1 ORDER BY created_at DESC`, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WaitlistEntry
+	for rows.Next() {
+		var e WaitlistEntry
+		if err := rows.Scan(&e.Email, &e.Interest, &e.Note, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (p *PG) ProposalsSince(ctx context.Context, t time.Time) ([]Proposal, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT name, email, title, summary, link, created_at FROM proposals
+		WHERE created_at >= $1 ORDER BY created_at DESC`, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Proposal
+	for rows.Next() {
+		var pr Proposal
+		if err := rows.Scan(&pr.Name, &pr.Email, &pr.Title, &pr.Summary, &pr.Link, &pr.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, pr)
+	}
+	return out, rows.Err()
+}
+
 func (p *PG) CreateConsumerKey(ctx context.Context, label string) (string, string, error) {
 	raw := randToken("sc_live_")
 	id := keyID(raw)
