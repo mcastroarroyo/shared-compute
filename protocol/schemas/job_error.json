@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/job_error.json",
+  "title": "job_error (provider -> coordinator)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "job_error" },
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "code": {
+      "enum": ["decrypt", "model-missing", "oom", "timeout", "cancelled", "backend", "internal"]
+    },
+    "message": { "type": "string", "maxLength": 256, "description": "generic; MUST NOT contain prompt or completion content" }
+  },
+  "required": ["type", "job_id", "code"]
+}

@@ -1,0 +1,11 @@
+Copyright (c) 2026 Miguel Castro. All rights reserved.
+
+PLACEHOLDER LICENSE — NOT YET FINALIZED.
+
+This is a private, pre-alpha codebase. No license to use, copy, modify, or
+distribute this software is granted at this time. Choose and commit a real
+license (e.g. Apache-2.0, AGPL-3.0, BSL-1.1, or a proprietary EULA) before
+publishing the repository or distributing any build.
+
+This project is a clean-room implementation. It must not incorporate source
+code from any proprietary private-inference platform. See docs/LEGAL.md.

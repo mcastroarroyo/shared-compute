@@ -1,0 +1,15 @@
+[package]
+name = "sc-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+sc-protocol = { path = "../sc-protocol" }
+tokio = { workspace = true, features = ["net"] }
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true

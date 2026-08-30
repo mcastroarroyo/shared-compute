@@ -1,0 +1,22 @@
+[package]
+name = "sc-inference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Real llama.cpp backend, wired in the milestone after M1.
+llama = []
+
+[dependencies]
+sc-protocol = { path = "../sc-protocol" }
+async-trait.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true }
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time"] }

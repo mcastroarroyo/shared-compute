@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/register_ack.json",
+  "title": "register_ack (coordinator -> provider)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "register_ack" },
+    "ok": { "type": "boolean" },
+    "error": {
+      "enum": ["protocol-version", "bad-token", "bad-key", "attestation-failed", "capacity", "internal"],
+      "description": "present when ok=false"
+    },
+    "provider_id": { "$ref": "common.json#/$defs/uuid" },
+    "trust_tier": { "$ref": "common.json#/$defs/trustTier" },
+    "accepted_models": { "type": "array", "items": { "type": "string" } },
+    "heartbeat_seconds": { "type": "integer", "minimum": 5, "maximum": 120 },
+    "coordinator_pk": { "$ref": "common.json#/$defs/b64", "description": "coordinator long-term X25519 public key (for optional consumer outer-seal advertising)" }
+  },
+  "required": ["type", "ok"]
+}

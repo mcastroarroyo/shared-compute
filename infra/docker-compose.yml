@@ -1,0 +1,48 @@
+# Local full-stack for development.
+#   docker compose -f infra/docker-compose.yml up --build
+#
+# M1: only `coordinator` is needed. `postgres` and `minio` are here so the stack matches
+# the M2/M3 shape; the coordinator does not depend on them until then.
+
+services:
+  coordinator:
+    build:
+      context: ..
+      dockerfile: infra/coordinator.Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SC_HTTP_ADDR: ":8080"
+      SC_CONSUMER_API_KEYS: "dev-consumer-key"
+      SC_PROVIDER_TOKENS: "dev-provider-token"
+      SC_HEARTBEAT_SECONDS: "15"
+      SC_DEBUG: "1"
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["m2"]
+    environment:
+      POSTGRES_USER: sc
+      POSTGRES_PASSWORD: sc
+      POSTGRES_DB: sharedcompute
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["m3"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sc
+      MINIO_ROOT_PASSWORD: sc-secret-dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  miniodata:

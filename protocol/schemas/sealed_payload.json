@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/sealed_payload.json",
+  "title": "SealedPayload (protocol v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "alg": { "const": "crypto_box-x25519-xsalsa20poly1305" },
+    "epk": { "$ref": "common.json#/$defs/b64", "description": "coordinator ephemeral public key for this job, base64 (32 bytes decoded)" },
+    "nonce": { "$ref": "common.json#/$defs/b64", "description": "base64 of 24 random bytes" },
+    "ciphertext": { "$ref": "common.json#/$defs/b64" }
+  },
+  "required": ["alg", "epk", "nonce", "ciphertext"]
+}

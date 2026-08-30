@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/job_request.json",
+  "title": "job_request (coordinator -> provider)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "job_request" },
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "model": { "type": "string", "maxLength": 128 },
+    "deadline_ms": { "type": "integer", "minimum": 1, "description": "provider should abort if not finished within this budget" },
+    "sealed": { "$ref": "sealed_payload.json", "description": "seals job_request_plaintext.json" }
+  },
+  "required": ["type", "job_id", "model", "sealed"]
+}

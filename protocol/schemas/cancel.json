@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/cancel.json",
+  "title": "cancel (coordinator -> provider)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "cancel" },
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "reason": { "enum": ["client-disconnect", "deadline", "operator", "superseded"] }
+  },
+  "required": ["type", "job_id", "reason"]
+}

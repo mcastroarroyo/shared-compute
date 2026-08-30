@@ -1,0 +1,16 @@
+[package]
+name = "sc-crypto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+sc-protocol = { path = "../sc-protocol" }
+crypto_box = { workspace = true }
+base64.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

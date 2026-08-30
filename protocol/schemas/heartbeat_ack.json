@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/heartbeat_ack.json",
+  "title": "heartbeat_ack (coordinator -> provider)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "heartbeat_ack" },
+    "server_ts": { "$ref": "common.json#/$defs/unixSeconds" },
+    "directive": {
+      "enum": ["none", "drain", "reregister", "disconnect"],
+      "description": "drain = finish current jobs, accept no new ones"
+    }
+  },
+  "required": ["type", "server_ts"]
+}

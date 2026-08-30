@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/job_chunk_plaintext.json",
+  "title": "job_chunk plaintext (sealed inside job_chunk.sealed)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "delta": { "type": "string" },
+    "done": { "type": "boolean" }
+  },
+  "required": ["job_id", "seq", "delta", "done"]
+}

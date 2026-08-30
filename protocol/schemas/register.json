@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/register.json",
+  "title": "register (provider -> coordinator)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "register" },
+    "agent": { "type": "string", "maxLength": 64, "description": "provider daemon version, e.g. provider-daemon/0.1.0" },
+    "registration_token": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "static_pk": { "$ref": "common.json#/$defs/b64", "description": "provider X25519 static public key (32 bytes decoded)" },
+    "capabilities": { "$ref": "common.json#/$defs/capabilities" },
+    "attestation": { "$ref": "common.json#/$defs/attestation" },
+    "resume_provider_id": { "$ref": "common.json#/$defs/uuid", "description": "present when reconnecting" }
+  },
+  "required": ["type", "agent", "registration_token", "static_pk", "capabilities"]
+}

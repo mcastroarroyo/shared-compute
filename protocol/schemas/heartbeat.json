@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/heartbeat.json",
+  "title": "heartbeat (provider -> coordinator)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "heartbeat" },
+    "telemetry": { "$ref": "common.json#/$defs/telemetry" }
+  },
+  "required": ["type", "telemetry"]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/model_pull.json",
+  "title": "model_pull (coordinator -> provider)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "model_pull" },
+    "model": { "type": "string", "maxLength": 128 },
+    "manifest_url": { "type": "string", "format": "uri" },
+    "priority": { "enum": ["low", "normal", "high"] }
+  },
+  "required": ["type", "model", "manifest_url"]
+}

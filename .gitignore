@@ -1,0 +1,40 @@
+# Build output
+/coordinator/bin/
+/coordinator/dist/
+**/target/
+/android-app/**/build/
+/android-app/.gradle/
+/console/.next/
+/console/node_modules/
+/model-registry/dist/
+/e2e-tests/tmp/
+
+# Models & large blobs (never commit weights)
+*.gguf
+*.bin
+*.safetensors
+/models/
+/.cache/
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/*.key
+secrets/
+fly.local.toml
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+*.log
+
+# Rust
+Cargo.lock.orig
+
+# Go
+/coordinator/coverage.out

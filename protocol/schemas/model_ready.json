@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/model_ready.json",
+  "title": "model_ready (provider -> coordinator)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "model_ready" },
+    "model": { "type": "string", "maxLength": 128 },
+    "ok": { "type": "boolean" },
+    "error": { "enum": ["download", "signature", "hash", "disk-space", "unsupported"] },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "aggregate manifest hash the provider verified" },
+    "bytes": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["type", "model", "ok"]
+}

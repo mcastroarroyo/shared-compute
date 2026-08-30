@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/job_chunk.json",
+  "title": "job_chunk (provider -> coordinator)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "job_chunk" },
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "sealed": { "$ref": "sealed_payload.json", "description": "seals job_chunk_plaintext.json; sealed to job_request.sealed.epk" }
+  },
+  "required": ["type", "job_id", "sealed"]
+}

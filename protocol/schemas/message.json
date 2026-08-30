@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/message.json",
+  "title": "WebSocket message envelope (protocol v0)",
+  "type": "object",
+  "required": ["v", "type", "id", "ts"],
+  "properties": {
+    "v": { "const": "0" },
+    "type": {
+      "enum": [
+        "register", "register_ack",
+        "heartbeat", "heartbeat_ack",
+        "model_pull", "model_ready",
+        "job_request", "job_chunk", "job_done", "job_error",
+        "cancel", "benchmark_report"
+      ]
+    },
+    "id": { "$ref": "common.json#/$defs/uuid" },
+    "re": { "$ref": "common.json#/$defs/uuid", "description": "id of the message this responds to" },
+    "ts": { "$ref": "common.json#/$defs/unixSeconds" }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "register" } } },
+      "then": { "$ref": "register.json" } },
+    { "if": { "properties": { "type": { "const": "register_ack" } } },
+      "then": { "$ref": "register_ack.json" } },
+    { "if": { "properties": { "type": { "const": "heartbeat" } } },
+      "then": { "$ref": "heartbeat.json" } },
+    { "if": { "properties": { "type": { "const": "heartbeat_ack" } } },
+      "then": { "$ref": "heartbeat_ack.json" } },
+    { "if": { "properties": { "type": { "const": "model_pull" } } },
+      "then": { "$ref": "model_pull.json" } },
+    { "if": { "properties": { "type": { "const": "model_ready" } } },
+      "then": { "$ref": "model_ready.json" } },
+    { "if": { "properties": { "type": { "const": "job_request" } } },
+      "then": { "$ref": "job_request.json" } },
+    { "if": { "properties": { "type": { "const": "job_chunk" } } },
+      "then": { "$ref": "job_chunk.json" } },
+    { "if": { "properties": { "type": { "const": "job_done" } } },
+      "then": { "$ref": "job_done.json" } },
+    { "if": { "properties": { "type": { "const": "job_error" } } },
+      "then": { "$ref": "job_error.json" } },
+    { "if": { "properties": { "type": { "const": "cancel" } } },
+      "then": { "$ref": "cancel.json" } },
+    { "if": { "properties": { "type": { "const": "benchmark_report" } } },
+      "then": { "$ref": "benchmark_report.json" } }
+  ]
+}

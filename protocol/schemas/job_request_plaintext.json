@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/job_request_plaintext.json",
+  "title": "job_request plaintext (sealed inside job_request.sealed)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "model": { "type": "string", "maxLength": 128 },
+    "messages": {
+      "type": "array",
+      "items": { "$ref": "common.json#/$defs/chatMessage" },
+      "minItems": 1
+    },
+    "params": { "$ref": "common.json#/$defs/samplingParams" },
+    "stream": { "type": "boolean" }
+  },
+  "required": ["job_id", "model", "messages", "params", "stream"]
+}

@@ -1,0 +1,32 @@
+[package]
+name = "provider-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+default-run = "provider-daemon"
+
+[features]
+default = []
+llama = ["sc-inference/llama"]
+
+[dependencies]
+sc-protocol = { path = "../sc-protocol" }
+sc-crypto = { path = "../sc-crypto" }
+sc-net = { path = "../sc-net" }
+sc-models = { path = "../sc-models" }
+sc-inference = { path = "../sc-inference" }
+sc-telemetry = { path = "../sc-telemetry" }
+sc-attest = { path = "../sc-attest" }
+
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "signal", "fs"] }
+tokio-util.workspace = true
+futures-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+crypto_box.workspace = true

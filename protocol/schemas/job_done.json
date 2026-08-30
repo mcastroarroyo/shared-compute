@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shared-compute.dev/protocol/v0/job_done.json",
+  "title": "job_done (provider -> coordinator)",
+  "type": "object",
+  "properties": {
+    "type": { "const": "job_done" },
+    "job_id": { "$ref": "common.json#/$defs/uuid" },
+    "usage": { "$ref": "common.json#/$defs/usage" },
+    "finish_reason": { "$ref": "common.json#/$defs/finishReason" },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "prefill_tps": { "type": "number", "minimum": 0 },
+    "decode_tps": { "type": "number", "minimum": 0 }
+  },
+  "required": ["type", "job_id", "usage", "finish_reason", "duration_ms"]
+}

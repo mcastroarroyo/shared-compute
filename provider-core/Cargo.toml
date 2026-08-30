@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "sc-protocol",
+    "sc-crypto",
+    "sc-net",
+    "sc-models",
+    "sc-inference",
+    "sc-telemetry",
+    "sc-attest",
+    "provider-daemon",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "LicenseRef-Proprietary-Placeholder"
+repository = "https://github.com/mcastroarroyo/shared-compute"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "io-util"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "1"
+async-trait = "0.1"
+base64 = "0.22"
+rand = "0.8"
+crypto_box = { version = "0.9", features = ["std"] }
+uuid = { version = "1", features = ["v4"] }
+clap = { version = "4", features = ["derive", "env"] }
+sysinfo = "0.32"
+tokio-util = { version = "0.7", features = ["rt"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+sha2 = "0.10"
+
+[profile.release]
+lto = "thin"
+strip = true
