@@ -16,8 +16,8 @@ Pre-alpha. Building milestone by milestone — see
 
 | Milestone | Scope | State |
 |---|---|---|
-| M0 | Repo, protocol contract, toolchains, CI, local stack | in progress |
-| M1 | First end-to-end encrypted inference on localhost | — |
+| M0 | Repo, protocol contract, toolchains, CI, local stack | **done** |
+| M1 | First end-to-end encrypted inference on localhost | **done (mock backend)** — real llama.cpp next |
 | M2 | Coordinator online (Fly.io) with TLS | — |
 | M3 | Model registry (Cloudflare R2) + macOS/Linux provider packaging | — |
 | M4 | Scheduler, trust tiers, metering, web console | — |
