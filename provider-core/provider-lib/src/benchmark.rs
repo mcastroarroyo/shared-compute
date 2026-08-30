@@ -21,8 +21,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 const CACHE_TTL_SECS: u64 = 7 * 24 * 3600;
-const SUSTAINED_TOKENS: u32 = 256;
-const WINDOW_TOKENS: usize = 48;
+const SUSTAINED_TOKENS: u32 = 400;
 
 #[derive(Serialize, Deserialize)]
 struct Cache {
@@ -84,7 +83,7 @@ fn mem_bandwidth_gbps() -> f64 {
     }
 }
 
-fn bench_prompt() -> Vec<proto::ChatMessage> {
+fn prefill_prompt() -> Vec<proto::ChatMessage> {
     // ~300 words of neutral filler so prefill has real work to do. No user data.
     let filler = "the network connects idle devices into shared compute so value flows \
         back to the people and machines that make it possible "
@@ -92,6 +91,15 @@ fn bench_prompt() -> Vec<proto::ChatMessage> {
     vec![proto::ChatMessage {
         role: "user".into(),
         content: format!("Summarize the following in one sentence:\n{filler}"),
+    }]
+}
+
+fn sustained_prompt() -> Vec<proto::ChatMessage> {
+    // Forces a long, steady stream of tokens so the first vs last window reveals
+    // thermal decay. Deterministic at temperature 0.
+    vec![proto::ChatMessage {
+        role: "user".into(),
+        content: "List the integers from 1 to 400, one per line, with no other text.".into(),
     }]
 }
 
@@ -118,11 +126,11 @@ pub async fn run(
         .await
         .unwrap_or(0.0);
 
-    // 1. Short run for prefill / decode tok/s.
+    // 1. Short run for prefill tok/s.
     let short = InferenceRequest {
         model: model.to_string(),
-        messages: bench_prompt(),
-        params: params(32),
+        messages: prefill_prompt(),
+        params: params(16),
     };
     let mut sink = |_: String| {};
     let c1 = backend
@@ -133,7 +141,7 @@ pub async fn run(
     // 2. Sustained run: timestamp every token, compare first vs last window.
     let sustained = InferenceRequest {
         model: model.to_string(),
-        messages: bench_prompt(),
+        messages: sustained_prompt(),
         params: params(SUSTAINED_TOKENS),
     };
     let mut stamps: Vec<Instant> = Vec::with_capacity(SUSTAINED_TOKENS as usize);
@@ -154,25 +162,37 @@ pub async fn run(
             .as_secs_f64();
         (span > 0.0).then(|| (slice.len() - 1) as f64 / span)
     };
-    let (start_tps, end_tps) = if stamps.len() >= WINDOW_TOKENS * 2 {
-        (
-            window_tps(&stamps[..WINDOW_TOKENS]),
-            window_tps(&stamps[stamps.len() - WINDOW_TOKENS..]),
-        )
+    // Split the token stream in half: first half vs second half exposes thermal
+    // decay. Needs enough tokens for each half to be meaningful.
+    let (start_tps, end_tps) = if stamps.len() >= 16 {
+        let mid = stamps.len() / 2;
+        (window_tps(&stamps[..mid]), window_tps(&stamps[mid..]))
     } else {
         (window_tps(&stamps), None)
     };
 
     let tel = sc_telemetry::sample_telemetry(0, 0);
+    // Some platforms (macOS) report 0 available; fall back to total RAM as the
+    // capacity signal so the coordinator always has a non-zero number.
+    let ram_mb = if tel.mem_available_mb > 0 {
+        tel.mem_available_mb
+    } else {
+        sc_telemetry::host_info().ram_mb
+    };
     let cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
         .ok();
+
+    // A ~16-token prefill on a tiny prompt can report an implausible tok/s from
+    // timer granularity; cap it so it can't skew anything downstream. ACU does
+    // not use prefill, but the number is still surfaced.
+    let prefill_tps = c1.prefill_tps.min(20_000.0);
 
     let report = proto::BenchmarkReport {
         kind: proto::msg_type::BENCHMARK_REPORT.into(),
         model: model.to_string(),
         backend: backend.name().to_string(),
-        prefill_tps: c1.prefill_tps,
+        prefill_tps,
         decode_tps: c1.decode_tps,
         context_tested: Some(c1.usage.prompt_tokens),
         sample_ms: Some((total_secs * 1000.0) as u32),
@@ -180,7 +200,7 @@ pub async fn run(
         sustained_start_tps: start_tps,
         sustained_end_tps: end_tps.or(start_tps),
         mem_bandwidth_gbps: Some(mem),
-        available_ram_mb: Some(tel.mem_available_mb),
+        available_ram_mb: Some(ram_mb),
         available_storage_mb: None,
         cpu_cores: cores,
         thermal_state: Some(tel.thermal_state.clone()),

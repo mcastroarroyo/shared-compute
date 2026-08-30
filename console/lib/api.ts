@@ -68,6 +68,7 @@ export const api = {
     return (await fetch(base + "/healthz")).json();
   },
   providers: () => adminFetch("/admin/providers"),
+  nodes: () => adminFetch("/admin/nodes"),
   usage: (hours = 24) => adminFetch(`/admin/usage?since_hours=${hours}`),
   earnings: (hours = 168) => adminFetch(`/admin/earnings?since_hours=${hours}`),
 
