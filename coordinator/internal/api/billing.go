@@ -8,37 +8,31 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
-	stripe "github.com/stripe/stripe-go/v81"
-	"github.com/stripe/stripe-go/v81/account"
-	"github.com/stripe/stripe-go/v81/accountlink"
-	"github.com/stripe/stripe-go/v81/checkout/session"
-	"github.com/stripe/stripe-go/v81/transfer"
-	"github.com/stripe/stripe-go/v81/webhook"
+	stripe "github.com/stripe/stripe-go/v86"
+	"github.com/stripe/stripe-go/v86/webhook"
 )
 
-var stripeOnce sync.Once
-
-func (s *Server) stripeReady() bool {
-	if s.cfg.StripeSecretKey == "" {
-		return false
+// One Stripe *Client* for every request the coordinator makes (billing + payouts).
+// The connectdemo package builds its own client for its self-contained sample.
+func newStripeClient(key string) *stripe.Client {
+	if key == "" {
+		return nil
 	}
-	stripeOnce.Do(func() { stripe.Key = s.cfg.StripeSecretKey })
-	return true
+	return stripe.NewClient(key)
 }
 
 func (s *Server) requireStripe(w http.ResponseWriter) bool {
-	if !s.stripeReady() {
+	if s.stripe == nil {
 		writeError(w, http.StatusNotImplemented, "billing_not_configured",
-			"Stripe is not configured on this coordinator")
+			"Stripe is not configured on this coordinator (set SC_STRIPE_SECRET_KEY)")
 		return false
 	}
 	return true
 }
 
-// --- consumer: balance + top-up ---
+// --- consumer: balance + prepaid top-up (Stripe Checkout) ---
 
 func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 	keyID := keyIDFrom(r.Context())
@@ -73,25 +67,26 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	base := s.cfg.PublicBaseURL
-	p := &stripe.CheckoutSessionParams{
-		Mode:              stripe.String(string(stripe.CheckoutSessionModePayment)),
+	sess, err := s.stripe.V1CheckoutSessions.Create(r.Context(), &stripe.CheckoutSessionCreateParams{
+		Mode:              stripe.String("payment"),
 		ClientReferenceID: stripe.String(keyID),
 		SuccessURL:        stripe.String(base + "/billing/?topup=success"),
 		CancelURL:         stripe.String(base + "/billing/?topup=cancel"),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{{
+		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{{
 			Quantity: stripe.Int64(1),
-			PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
+			PriceData: &stripe.CheckoutSessionCreateLineItemPriceDataParams{
 				Currency:   stripe.String("usd"),
 				UnitAmount: stripe.Int64(cents),
-				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
+				ProductData: &stripe.CheckoutSessionCreateLineItemPriceDataProductDataParams{
 					Name: stripe.String("Ayni inference credits"),
 				},
 			},
 		}},
-	}
-	p.AddMetadata("key_id", keyID)
-	p.AddMetadata("credit_micros", strconv.FormatInt(cents*10_000, 10)) // cents -> micro-USD
-	sess, err := session.New(p)
+		Metadata: map[string]string{
+			"key_id":        keyID,
+			"credit_micros": strconv.FormatInt(cents*10_000, 10), // cents -> micro-USD
+		},
+	})
 	if err != nil {
 		s.log.Warn("stripe checkout create failed", "err", err)
 		writeError(w, http.StatusBadGateway, "stripe_error", "could not create checkout session")
@@ -100,8 +95,10 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"url": sess.URL, "session_id": sess.ID})
 }
 
-// handleStripeWebhook credits a balance when a Checkout payment completes. Public,
-// verified by the endpoint signing secret.
+// handleStripeWebhook credits a balance when a Checkout payment completes. This is
+// a v1 *snapshot* webhook (full event body), verified by the endpoint signing
+// secret. IgnoreAPIVersionMismatch: endpoints are often pinned to an older
+// api_version than the SDK expects; without this every event is rejected.
 func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.StripeWebhookSecret == "" {
 		writeError(w, http.StatusNotImplemented, "webhook_not_configured", "no signing secret set")
@@ -115,11 +112,7 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	event, err := webhook.ConstructEventWithOptions(payload, r.Header.Get("Stripe-Signature"),
 		s.cfg.StripeWebhookSecret, webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
 	if err != nil {
-		sec := s.cfg.StripeWebhookSecret
-		if len(sec) > 12 {
-			sec = sec[:12] + "…"
-		}
-		s.log.Warn("stripe webhook rejected", "err", err, "secret_prefix", sec,
+		s.log.Warn("stripe webhook rejected", "err", err,
 			"sig_present", r.Header.Get("Stripe-Signature") != "")
 		writeError(w, http.StatusBadRequest, "bad_signature", "signature verification failed")
 		return
@@ -147,6 +140,7 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"ignored": "missing key_id/amount"})
 			return
 		}
+		// Idempotent on the session id.
 		if err := s.store.AddCredit(context.WithoutCancel(r.Context()), keyID, micros, "topup", cs.ID, ""); err != nil {
 			s.log.Warn("credit topup failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "credit_failed", "could not apply credit")
@@ -157,10 +151,85 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"received": true})
 }
 
-// --- admin: provider payout wiring ---
+// --- provider payout accounts: V2 recipient accounts keyed by the provider's
+//     X25519 static identity (static_pk) ---
 
 type connectBody struct {
 	StaticPK string `json:"static_pk"`
+}
+
+// createV2RecipientAccount mirrors internal/connectdemo: platform owns pricing and
+// fees; the connected account only needs to *receive* transfers.
+func (s *Server) createV2RecipientAccount(ctx context.Context, label string) (string, error) {
+	acct, err := s.stripe.V2CoreAccounts.Create(ctx, &stripe.V2CoreAccountCreateParams{
+		DisplayName: stripe.String(label),
+		Dashboard:   stripe.String("express"),
+		Identity: &stripe.V2CoreAccountCreateIdentityParams{
+			Country: stripe.String("us"), // PLACEHOLDER: collect the real country
+		},
+		Defaults: &stripe.V2CoreAccountCreateDefaultsParams{
+			Responsibilities: &stripe.V2CoreAccountCreateDefaultsResponsibilitiesParams{
+				FeesCollector:   stripe.String("application"),
+				LossesCollector: stripe.String("application"),
+			},
+		},
+		Configuration: &stripe.V2CoreAccountCreateConfigurationParams{
+			Recipient: &stripe.V2CoreAccountCreateConfigurationRecipientParams{
+				Capabilities: &stripe.V2CoreAccountCreateConfigurationRecipientCapabilitiesParams{
+					StripeBalance: &stripe.V2CoreAccountCreateConfigurationRecipientCapabilitiesStripeBalanceParams{
+						StripeTransfers: &stripe.V2CoreAccountCreateConfigurationRecipientCapabilitiesStripeBalanceStripeTransfersParams{
+							Requested: stripe.Bool(true),
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return acct.ID, nil
+}
+
+func (s *Server) v2OnboardingLink(ctx context.Context, acctID string) (string, error) {
+	base := s.cfg.PublicBaseURL
+	al, err := s.stripe.V2CoreAccountLinks.Create(ctx, &stripe.V2CoreAccountLinkCreateParams{
+		Account: stripe.String(acctID),
+		UseCase: &stripe.V2CoreAccountLinkCreateUseCaseParams{
+			Type: stripe.String("account_onboarding"),
+			AccountOnboarding: &stripe.V2CoreAccountLinkCreateUseCaseAccountOnboardingParams{
+				Configurations: []*string{stripe.String("recipient")},
+				RefreshURL:     stripe.String(base + "/connect/onboard/refresh?accountId=" + acctID),
+				ReturnURL:      stripe.String(base + "/connect/onboard/return?accountId=" + acctID),
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return al.URL, nil
+}
+
+// v2TransfersActive reports whether the account's stripe_transfers capability is
+// live, plus the requirements status. Always read fresh from the API.
+func (s *Server) v2AccountReady(ctx context.Context, acctID string) (ready bool, requirements string, err error) {
+	acct, err := s.stripe.V2CoreAccounts.Retrieve(ctx, acctID, &stripe.V2CoreAccountRetrieveParams{
+		Include: []*string{
+			stripe.String("configuration.recipient"),
+			stripe.String("requirements"),
+		},
+	})
+	if err != nil {
+		return false, "", err
+	}
+	if c := acct.Configuration; c != nil && c.Recipient != nil && c.Recipient.Capabilities != nil &&
+		c.Recipient.Capabilities.StripeBalance != nil && c.Recipient.Capabilities.StripeBalance.StripeTransfers != nil {
+		ready = string(c.Recipient.Capabilities.StripeBalance.StripeTransfers.Status) == "active"
+	}
+	if acct.Requirements != nil && acct.Requirements.Summary != nil && acct.Requirements.Summary.MinimumDeadline != nil {
+		requirements = string(acct.Requirements.Summary.MinimumDeadline.Status)
+	}
+	return ready, requirements, nil
 }
 
 func (s *Server) adminPayoutConnect(w http.ResponseWriter, r *http.Request) {
@@ -172,39 +241,30 @@ func (s *Server) adminPayoutConnect(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", "static_pk required")
 		return
 	}
+
 	existing, ok, _ := s.store.GetPayoutAccount(r.Context(), b.StaticPK)
-	var acctID string
+	acctID := ""
 	if ok && existing.StripeAccount != "" {
 		acctID = existing.StripeAccount
 	} else {
-		acct, err := account.New(&stripe.AccountParams{
-			Type: stripe.String(string(stripe.AccountTypeExpress)),
-			Capabilities: &stripe.AccountCapabilitiesParams{
-				Transfers: &stripe.AccountCapabilitiesTransfersParams{Requested: stripe.Bool(true)},
-			},
-		})
+		id, err := s.createV2RecipientAccount(r.Context(), "Ayni provider "+shortPK(b.StaticPK))
 		if err != nil {
-			s.log.Warn("stripe account create failed", "err", err)
-			writeError(w, http.StatusBadGateway, "stripe_error", "could not create connect account")
+			s.log.Warn("stripe v2 account create failed", "err", err)
+			writeError(w, http.StatusBadGateway, "stripe_error", "could not create connect account: "+err.Error())
 			return
 		}
-		acctID = acct.ID
+		acctID = id
 		_ = s.store.UpsertPayoutAccount(r.Context(), store.PayoutAccount{
 			StaticPK: b.StaticPK, StripeAccount: acctID, Status: "pending",
 		})
 	}
-	base := s.cfg.PublicBaseURL
-	link, err := accountlink.New(&stripe.AccountLinkParams{
-		Account:    stripe.String(acctID),
-		RefreshURL: stripe.String(base + "/billing/?connect=refresh"),
-		ReturnURL:  stripe.String(base + "/billing/?connect=done"),
-		Type:       stripe.String("account_onboarding"),
-	})
+
+	link, err := s.v2OnboardingLink(r.Context(), acctID)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "stripe_error", "could not create onboarding link")
+		writeError(w, http.StatusBadGateway, "stripe_error", "could not create onboarding link: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"account_id": acctID, "onboarding_url": link.URL})
+	writeJSON(w, http.StatusOK, map[string]any{"account_id": acctID, "onboarding_url": link})
 }
 
 func (s *Server) adminPayoutRefresh(w http.ResponseWriter, r *http.Request) {
@@ -221,21 +281,19 @@ func (s *Server) adminPayoutRefresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "no_account", "no connect account for that identity")
 		return
 	}
-	acct, err := account.GetByID(pa.StripeAccount, nil)
+	ready, reqs, err := s.v2AccountReady(r.Context(), pa.StripeAccount)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "stripe_error", "could not fetch account")
+		writeError(w, http.StatusBadGateway, "stripe_error", "could not fetch account: "+err.Error())
 		return
 	}
-	status := "pending"
-	if acct.PayoutsEnabled {
-		status = "enabled"
+	pa.Status = "pending"
+	if ready {
+		pa.Status = "enabled"
 	}
-	pa.Status = status
 	_ = s.store.UpsertPayoutAccount(r.Context(), pa)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"account_id": pa.StripeAccount, "status": status,
-		"payouts_enabled": acct.PayoutsEnabled, "charges_enabled": acct.ChargesEnabled,
-		"details_submitted": acct.DetailsSubmitted,
+		"account_id": pa.StripeAccount, "status": pa.Status,
+		"ready_to_receive": ready, "requirements": reqs,
 	})
 }
 
@@ -266,6 +324,9 @@ func (s *Server) adminPayoutsPending(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"pending": out})
 }
 
+// adminPayoutsRun pays providers their accrued share via Stripe Transfers
+// (separate charges & transfers: the money is already in the platform balance
+// from consumer credit top-ups). Dry-run by default; ?commit=1 moves money.
 func (s *Server) adminPayoutsRun(w http.ResponseWriter, r *http.Request) {
 	if !s.requireStripe(w) {
 		return
@@ -311,18 +372,19 @@ func (s *Server) adminPayoutsRun(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		cents := a.OwedMicros / 10_000
-		tr, err := transfer.New(&stripe.TransferParams{
+		tr, terr := s.stripe.V1Transfers.Create(context.WithoutCancel(r.Context()), &stripe.TransferCreateParams{
 			Amount:      stripe.Int64(cents),
 			Currency:    stripe.String("usd"),
 			Destination: stripe.String(pa.StripeAccount),
+			Description: stripe.String("Ayni provider payout"),
 		})
-		if err != nil {
-			s.log.Warn("stripe transfer failed", "err", err, "acct", pa.StripeAccount)
+		if terr != nil {
+			s.log.Warn("stripe transfer failed", "err", terr, "acct", pa.StripeAccount)
 			_, _ = s.store.RecordPayoutAndSettle(context.WithoutCancel(r.Context()), store.PayoutRecord{
 				StaticPK: a.StaticPK, StripeAccount: pa.StripeAccount,
 				AmountMicros: a.OwedMicros, State: "failed",
 			})
-			res.Skipped = "transfer failed: " + err.Error()
+			res.Skipped = "transfer failed: " + terr.Error()
 			results = append(results, res)
 			continue
 		}
@@ -342,4 +404,11 @@ func (s *Server) adminPayoutsRun(w http.ResponseWriter, r *http.Request) {
 		"results":   results,
 		"note":      fmt.Sprintf("pass ?commit=1 to move money (%d transfers)", len(results)),
 	})
+}
+
+func shortPK(pk string) string {
+	if len(pk) > 8 {
+		return pk[:8]
+	}
+	return pk
 }

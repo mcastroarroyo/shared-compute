@@ -39,6 +39,21 @@ async function adminFetch(path: string, init?: RequestInit) {
   return res.status === 204 ? null : res.json();
 }
 
+async function consumerFetch(path: string, init?: RequestInit) {
+  const { base, consumer } = getCfg();
+  if (!consumer) throw new Error("set a consumer API key in Settings");
+  const res = await fetch(base + path, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${consumer}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()) || res.statusText}`);
+  return res.json();
+}
+
 export const api = {
   models: async () => {
     const { base, consumer } = getCfg();
@@ -55,6 +70,31 @@ export const api = {
   providers: () => adminFetch("/admin/providers"),
   usage: (hours = 24) => adminFetch(`/admin/usage?since_hours=${hours}`),
   earnings: (hours = 168) => adminFetch(`/admin/earnings?since_hours=${hours}`),
+
+  // billing (consumer key)
+  balance: () => consumerFetch("/billing/balance"),
+  topup: (amountUsd: number) =>
+    consumerFetch("/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({ amount_usd: amountUsd }),
+    }),
+
+  // payouts (admin token)
+  payoutsPending: () => adminFetch("/admin/payouts/pending"),
+  payoutConnect: (staticPk: string) =>
+    adminFetch("/admin/payouts/connect", {
+      method: "POST",
+      body: JSON.stringify({ static_pk: staticPk }),
+    }),
+  payoutRefresh: (staticPk: string) =>
+    adminFetch("/admin/payouts/connect/refresh", {
+      method: "POST",
+      body: JSON.stringify({ static_pk: staticPk }),
+    }),
+  payoutsRun: (commit: boolean, minUsd = 0) =>
+    adminFetch(`/admin/payouts/run?commit=${commit ? 1 : 0}&min_usd=${minUsd}`, {
+      method: "POST",
+    }),
   keys: () => adminFetch("/admin/keys"),
   createKey: (label: string) =>
     adminFetch("/admin/keys", { method: "POST", body: JSON.stringify({ label }) }),

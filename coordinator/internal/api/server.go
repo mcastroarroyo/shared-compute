@@ -21,6 +21,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/wshub"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	stripe "github.com/stripe/stripe-go/v86"
 )
 
 type ctxKey int
@@ -37,6 +38,7 @@ type Server struct {
 	intakeRL *ratelimit.Limiter
 	log      *slog.Logger
 	hub      *wshub.Hub
+	stripe   *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
@@ -46,6 +48,7 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		intakeRL: ratelimit.New(6), // public site forms: 6/min per IP
 		log:      log,
 		hub:      &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
+		stripe:   newStripeClient(cfg.StripeSecretKey),
 	}
 }
 
