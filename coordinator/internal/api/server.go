@@ -14,6 +14,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/connectdemo"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/marketplace"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/ratelimit"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
@@ -39,6 +40,7 @@ type Server struct {
 	log      *slog.Logger
 	hub      *wshub.Hub
 	stripe   *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
+	quotes   *marketplace.Store
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
@@ -49,6 +51,7 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		log:      log,
 		hub:      &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
 		stripe:   newStripeClient(cfg.StripeSecretKey),
+		quotes:   marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
 	}
 }
 
@@ -59,6 +62,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.Handle("POST /v1/batch", instrument("v1_batch", s.withAuth(s.handleBatch)))
+	mux.Handle("POST /v1/workloads", instrument("v1_workloads_create", s.withAuth(s.handleCreateWorkload)))
+	mux.Handle("GET /v1/workloads/{id}", instrument("v1_workloads_get", s.withAuth(s.handleGetWorkload)))
+	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.withAuth(s.handleAcceptWorkload)))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	mux.Handle("POST /waitlist", instrument("waitlist", http.HandlerFunc(s.handleWaitlist)))
 	mux.Handle("POST /initiatives", instrument("initiatives", http.HandlerFunc(s.handleInitiative)))

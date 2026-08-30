@@ -39,3 +39,49 @@ func TestConfidentialRevShareLower(t *testing.T) {
 		t.Fatalf("provider = %d, want 1_080_000", q.ProviderMicros)
 	}
 }
+
+func TestQuoteWorkloadBuildsUpFromCompute(t *testing.T) {
+	// 1M prompt + 1M completion, SMALL, community, redundancy 1.
+	c := QuoteWorkload("SMALL", "community", 1_000_000, 1_000_000, 1, 0.30, 1.0)
+
+	// provider earnings for that volume = QuoteJob provider share
+	base := QuoteJob("SMALL", "community", 1_000_000, 1_000_000, 1.0, 1.0)
+	if c.ComputeMicros != base.ProviderMicros {
+		t.Fatalf("compute = %d, want provider share %d", c.ComputeMicros, base.ProviderMicros)
+	}
+	if c.CoordinationMicros != c.ComputeMicros*15/100 {
+		t.Fatalf("coordination = %d, want 15%% of compute", c.CoordinationMicros)
+	}
+	want := c.ComputeMicros + c.CoordinationMicros + c.FailureMicros + c.MarginMicros + c.PaymentMicros
+	if c.TotalMicros != want {
+		t.Fatalf("total = %d, want sum of parts %d", c.TotalMicros, want)
+	}
+	// margin is 30% of (compute + coordination + failure)
+	pre := c.ComputeMicros + c.CoordinationMicros + c.FailureMicros
+	if c.MarginMicros != int64(float64(pre)*0.30) {
+		t.Fatalf("margin = %d, want 30%% of %d", c.MarginMicros, pre)
+	}
+}
+
+func TestQuoteWorkloadRedundancyDoublesComputeKeepsFailureFlat(t *testing.T) {
+	one := QuoteWorkload("SMALL", "community", 500_000, 500_000, 1, 0.30, 1.0)
+	two := QuoteWorkload("SMALL", "community", 500_000, 500_000, 2, 0.30, 1.0)
+	if two.ComputeMicros != one.ComputeMicros*2 {
+		t.Fatalf("redundancy 2 compute = %d, want 2x %d", two.ComputeMicros, one.ComputeMicros)
+	}
+	// failure = compute x (0.08 / redundancy): 0.08*C at r=1, 0.04*(2C) at r=2 -> same.
+	if two.FailureMicros != one.FailureMicros {
+		t.Fatalf("failure budget should stay flat under redundancy: one=%d two=%d",
+			one.FailureMicros, two.FailureMicros)
+	}
+	if two.TotalMicros <= one.TotalMicros {
+		t.Fatalf("redundancy 2 total %d should exceed redundancy 1 total %d", two.TotalMicros, one.TotalMicros)
+	}
+}
+
+func TestQuoteWorkloadFloor(t *testing.T) {
+	c := QuoteWorkload("MICRO", "community", 1, 1, 1, 0.30, 1.0)
+	if c.TotalMicros != MinWorkloadMicros {
+		t.Fatalf("tiny workload total = %d, want floor %d", c.TotalMicros, MinWorkloadMicros)
+	}
+}

@@ -135,13 +135,28 @@ func mapRelayErr(w http.ResponseWriter, err error) {
 }
 
 // meter records token usage and a successful job, and appends a usage event.
+// meter is the pay-as-you-go path (chat, standalone /v1/batch): record the job
+// and debit the consumer's prepaid balance by its gross.
 func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
+	q := s.recordJob(ctx, model, res)
+	// Debit the consumer's prepaid balance (allowed to go slightly negative;
+	// the pre-flight gate blocks the next request).
+	if e := s.store.AddCredit(context.WithoutCancel(ctx), keyIDFrom(ctx),
+		-q.GrossMicros, "debit", "", res.JobID); e != nil {
+		s.log.Warn("credit debit failed", "err", e)
+	}
+}
+
+// recordJob writes the usage event + provider earning accrual for one completed
+// job and returns its per-job quote. It does NOT touch consumer credit — callers
+// that pre-quoted a whole workload settle the balance once, elsewhere.
+func (s *Server) recordJob(ctx context.Context, model string, res *relay.Result) pricing.Quote {
 	metrics.JobsTotal.WithLabelValues("ok").Inc()
 	metrics.TokensTotal.WithLabelValues("prompt").Add(float64(res.Usage.PromptTokens))
 	metrics.TokensTotal.WithLabelValues("completion").Add(float64(res.Usage.CompletionTokens))
 
 	// Best-effort; never fail the response on a metering error.
-	err := s.store.RecordUsage(context.WithoutCancel(ctx), store.UsageEvent{
+	if err := s.store.RecordUsage(context.WithoutCancel(ctx), store.UsageEvent{
 		KeyID:            keyIDFrom(ctx),
 		ProviderID:       res.ProviderID,
 		Model:            model,
@@ -150,12 +165,10 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 		CompletionTokens: res.Usage.CompletionTokens,
 		DurationMS:       0,
 		FinishReason:     res.FinishReason,
-	})
-	if err != nil {
+	}); err != nil {
 		s.log.Warn("record usage failed", "err", err)
 	}
 
-	// Shadow-accrue provider earnings (docs/PAYMENTS.md Phase 1 — no money moves).
 	modelClass := ""
 	if s.cat != nil {
 		modelClass = s.cat.ClassOf(model)
@@ -174,12 +187,7 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 	}); e != nil {
 		s.log.Warn("record earning failed", "err", e)
 	}
-	// Debit the consumer's prepaid balance (allowed to go slightly negative;
-	// the pre-flight gate blocks the next request).
-	if e := s.store.AddCredit(context.WithoutCancel(ctx), keyIDFrom(ctx),
-		-q.GrossMicros, "debit", "", res.JobID); e != nil {
-		s.log.Warn("credit debit failed", "err", e)
-	}
+	return q
 }
 
 // --- non-streaming ---

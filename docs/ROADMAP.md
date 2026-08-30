@@ -33,7 +33,8 @@ Tier 0 is built fully now. Every trust seam is a trait/interface so 1 and 2 slot
 | M9 | partial — Stripe billing + V2 Connect payouts (money loop verified end to end) | live |
 | M10.1 | done — node self-benchmark + ACU capability registry (`GET /admin/nodes`) | live |
 | M10.2 | done — `POST /v1/batch` fan-out / aggregate execution primitive | live |
-| M7–M8, M10.3–M10.5 | not started | — |
+| M10.3 | done — `POST /v1/workloads` quote engine (estimate → price + ETA → accept → run) | live |
+| M7–M8, M10.4–M10.5 | not started | — |
 
 ## Milestones
 
@@ -110,10 +111,15 @@ Reframe from "rent a phone for X hours" to an intelligent hybrid compute marketp
   parallel with a bounded worker pool, reassembled in submission order, metered per
   sub-job. Prefers higher-ACU nodes; degrades to fewer providers; per-item errors are
   reported, not fatal (`internal/batch`).
-- **M10.3 — Workload estimator + marketplace quote.** `POST /v1/workloads`: estimate token
-  volume, discover eligible nodes, predict wall time from ACU, compute provider cost + Ayni
-  margin, return one customer quote; on accept the scheduler runs it via the M10.2
-  primitive.
+- **M10.3 — Workload estimator + marketplace quote (done).** `POST /v1/workloads` returns a
+  time-boxed quote: token volume estimated from explicit items or `{count, avg_*_tokens}`;
+  eligible supply discovered via `scheduler.Eligible`; wall-time predicted from the sum of
+  eligible nodes' measured sustained tok/s; price built bottom-up in `pricing.QuoteWorkload`
+  — `compute_acquisition + coordination(15%) + expected_failure(8%/redundancy) + margin(30%)
+  + payment(3%)`, NOT bid + margin. `GET /v1/workloads/{id}` shows status; `POST
+  /v1/workloads/{id}/accept` runs an explicit-items quote through the M10.2 primitive,
+  meters each sub-job, and debits the consumer once at the quoted price. Quotes are
+  in-memory with a 10-min TTL (`internal/marketplace`).
 - **M10.4 — Website reframe.** Hero "the world's unused compute, on demand"; interactive
   workload box → live quote.
 - **M10.5 — Spot tier.** Interruptible, cheapest, best-effort completion time.

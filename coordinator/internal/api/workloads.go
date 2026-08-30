@@ -1,0 +1,384 @@
+package api
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/batch"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/capability"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/marketplace"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/pricing"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/scheduler"
+)
+
+// Marketplace v0.1 (M10.3):
+//   POST /v1/workloads             -> a priced, time-boxed quote (no execution)
+//   GET  /v1/workloads/{id}        -> the quote + its status
+//   POST /v1/workloads/{id}/accept -> run it via the batch fan-out primitive
+//
+// A quote can be built from an estimate (count + average token sizes) OR from
+// explicit items. Only an explicit-items quote can be accepted and run.
+
+type workloadEstimateReq struct {
+	Count               int `json:"count"`
+	AvgPromptTokens     int `json:"avg_prompt_tokens"`
+	AvgCompletionTokens int `json:"avg_completion_tokens"`
+}
+
+type workloadRequest struct {
+	Model       string               `json:"model"`
+	Items       []batchItemReq       `json:"items"`
+	Estimate    *workloadEstimateReq `json:"estimate"`
+	Redundancy  int                  `json:"redundancy"`
+	MaxPriceUSD float64              `json:"max_price_usd"`
+}
+
+func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
+	var req workloadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	if req.Model == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "model is required")
+		return
+	}
+	hasItems := len(req.Items) > 0
+	hasEstimate := req.Estimate != nil && req.Estimate.Count > 0
+	if hasItems == hasEstimate {
+		writeError(w, http.StatusBadRequest, "invalid_request",
+			"provide exactly one of items[] or estimate{count,...}")
+		return
+	}
+	red := req.Redundancy
+	if red == 0 {
+		red = 1
+	}
+	if red < 1 || red > marketplace.MaxRedundancy {
+		writeError(w, http.StatusBadRequest, "invalid_request", "redundancy must be 1..3")
+		return
+	}
+
+	hwClass, ok := s.resolveModel(req.Model)
+	if !ok {
+		writeError(w, http.StatusNotFound, "model_not_found", "unknown model; see GET /v1/models")
+		return
+	}
+	tier := marketplace.NormalizeTier(r.Header.Get("X-Provider-Trust-Level"))
+
+	spec := marketplace.Spec{
+		Model:      req.Model,
+		ModelClass: s.classOf(req.Model),
+		Tier:       tier,
+		Redundancy: red,
+	}
+	switch {
+	case hasItems:
+		if len(req.Items) > marketplace.MaxItems {
+			writeError(w, http.StatusRequestEntityTooLarge, "too_many_items",
+				"a workload is limited to "+strconv.Itoa(marketplace.MaxItems)+" items")
+			return
+		}
+		items, msg := toBatchItems(req.Items)
+		if msg != "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", msg)
+			return
+		}
+		spec.Items = items
+	default:
+		if req.Estimate.Count > marketplace.MaxItems {
+			writeError(w, http.StatusRequestEntityTooLarge, "too_many_items",
+				"a workload is limited to "+strconv.Itoa(marketplace.MaxItems)+" items")
+			return
+		}
+		spec.EstimateCount = req.Estimate.Count
+		spec.AvgPromptTokens = req.Estimate.AvgPromptTokens
+		spec.AvgCompletionTokens = req.Estimate.AvgCompletionTokens
+	}
+
+	sup, serr := s.supplyFor(req.Model, tier, hwClass)
+	if serr != nil {
+		mapRelayErr(w, serr)
+		return
+	}
+
+	est := marketplace.EstimateWorkload(spec, sup)
+	cost := pricing.QuoteWorkload(spec.ModelClass, tier, est.PromptTokens, est.CompletionTokens,
+		red, s.cfg.MarketplaceMargin, s.cfg.PriceMultiplier)
+
+	if req.MaxPriceUSD > 0 && float64(cost.TotalMicros)/1e6 > req.MaxPriceUSD {
+		writeError(w, http.StatusConflict, "over_budget",
+			"quote exceeds max_price_usd; raise the cap or reduce the workload")
+		return
+	}
+
+	q := s.quotes.Create(keyIDFrom(r.Context()), req.Model, spec, est, cost)
+	writeJSON(w, http.StatusCreated, renderQuote(q))
+}
+
+func (s *Server) handleGetWorkload(w http.ResponseWriter, r *http.Request) {
+	q, ok := s.quotes.Get(r.PathValue("id"))
+	if !ok || q.KeyID != keyIDFrom(r.Context()) {
+		writeError(w, http.StatusNotFound, "not_found", "no such workload quote (it may have expired)")
+		return
+	}
+	writeJSON(w, http.StatusOK, renderQuote(q))
+}
+
+func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	q, ok := s.quotes.Get(id)
+	if !ok || q.KeyID != keyIDFrom(r.Context()) {
+		writeError(w, http.StatusNotFound, "not_found", "no such workload quote (it may have expired)")
+		return
+	}
+	if q.Accepted {
+		writeError(w, http.StatusConflict, "already_accepted", "this workload has already been accepted")
+		return
+	}
+	if !q.Spec.Runnable() {
+		writeError(w, http.StatusBadRequest, "estimate_only",
+			"this quote was built from an estimate; resubmit with explicit items[] to run it")
+		return
+	}
+	if s.cfg.BillingEnforce {
+		if bal, _ := s.store.CreditBalance(r.Context(), keyIDFrom(r.Context())); bal < q.Cost.TotalMicros {
+			writeError(w, http.StatusPaymentRequired, "insufficient_credit",
+				"quoted price exceeds your credit balance; add credits at /billing/checkout")
+			return
+		}
+	}
+	if _, locked := s.quotes.MarkAccepted(id); !locked {
+		writeError(w, http.StatusConflict, "already_accepted", "this workload has already been accepted")
+		return
+	}
+
+	acu := s.acuByPK(r.Context())
+	created := time.Now().Unix()
+	merged := &batch.Summary{Providers: map[string]int{}}
+	var wallMS int64
+	for _, chunk := range chunkItems(q.Spec.Items, batch.MaxItems) {
+		sum, err := batch.Run(r.Context(), s.reg, func(ctx context.Context, prov *registry.Provider, rr relay.Request, onDelta func(string) error) (*relay.Result, error) {
+			return relay.ExecuteOn(ctx, s.deps(), prov, rr, onDelta)
+		}, chunk, batch.Options{
+			Model:   q.Model,
+			MinTier: q.Spec.Tier,
+			HWClass: s.hwClassOf(q.Model),
+			ACUByPK: acu,
+		})
+		if err != nil {
+			mapRelayErr(w, err)
+			return
+		}
+		mergeSummary(merged, sum, len(merged.Items))
+		if sum.WallMS > wallMS {
+			wallMS = sum.WallMS
+		}
+	}
+	merged.WallMS = wallMS
+	merged.Fanout = len(merged.Providers)
+
+	// Record usage + provider earnings per sub-job, then settle the consumer's
+	// balance ONCE at the quoted price (not the metered sum).
+	for _, it := range merged.Items {
+		if it.ErrCode != "" {
+			continue
+		}
+		s.recordJob(r.Context(), q.Model, &relay.Result{
+			Usage: it.Usage, FinishReason: it.FinishReason,
+			ProviderID: it.ProviderID, ProviderPK: it.ProviderPK,
+			TrustTier: it.TrustTier, JobID: it.JobID,
+		})
+	}
+	charge := q.Cost.TotalMicros
+	if merged.OK == 0 {
+		charge = 0 // nothing ran successfully — don't bill
+	}
+	if charge > 0 {
+		if e := s.store.AddCredit(context.WithoutCancel(r.Context()), keyIDFrom(r.Context()),
+			-charge, "workload", "", q.ID); e != nil {
+			s.log.Warn("workload debit failed", "err", e)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":          q.ID,
+		"object":      "workload.result",
+		"model":       q.Model,
+		"created":     created,
+		"quoted_usd":  round2usd(q.Cost.TotalMicros),
+		"charged_usd": round2usd(charge),
+		"items":       renderBatchItems(merged),
+		"usage": map[string]int{
+			"prompt_tokens":     merged.PromptTokens,
+			"completion_tokens": merged.CompletionTokens,
+			"total_tokens":      merged.PromptTokens + merged.CompletionTokens,
+		},
+		"stats": batchStats(merged),
+	})
+}
+
+// --- helpers ---
+
+func renderQuote(q *marketplace.Quote) map[string]any {
+	status := "quoted"
+	if q.Accepted {
+		status = "accepted"
+	}
+	c := q.Cost
+	body := map[string]any{
+		"id":         q.ID,
+		"object":     "workload.quote",
+		"model":      q.Model,
+		"status":     status,
+		"tier":       q.Spec.Tier,
+		"redundancy": q.Spec.Redundancy,
+		"runnable":   q.Spec.Runnable(),
+		"estimate": map[string]any{
+			"items":             q.Estimate.Items,
+			"prompt_tokens":     q.Estimate.PromptTokens,
+			"completion_tokens": q.Estimate.CompletionTokens,
+			"eligible_nodes":    q.Estimate.EligibleNodes,
+			"aggregate_tps":     q.Estimate.AggregateTPS,
+			"eta_seconds":       q.Estimate.ETASeconds,
+		},
+		"price": map[string]any{
+			"currency":  "usd",
+			"total_usd": round2usd(c.TotalMicros),
+			"breakdown_usd": map[string]float64{
+				"compute_acquisition": round4usd(c.ComputeMicros),
+				"coordination":        round4usd(c.CoordinationMicros),
+				"expected_failure":    round4usd(c.FailureMicros),
+				"payment_processing":  round4usd(c.PaymentMicros),
+				"ayni_margin":         round4usd(c.MarginMicros),
+			},
+		},
+		"created_at": q.CreatedAt.UTC().Format(time.RFC3339),
+		"expires_at": q.ExpiresAt.UTC().Format(time.RFC3339),
+	}
+	if q.Spec.Runnable() {
+		body["accept_url"] = "/v1/workloads/" + q.ID + "/accept"
+	}
+	return body
+}
+
+// supplyFor is the slice of connected supply that could take this workload:
+// eligible providers (scheduler filter) joined to their measured throughput.
+func (s *Server) supplyFor(model, tier, hwClass string) (marketplace.Supply, error) {
+	cands, err := scheduler.Eligible(s.reg, scheduler.Requirements{
+		Model: model, MinTier: tier, HWClass: hwClass,
+	})
+	if err != nil {
+		return marketplace.Supply{}, err
+	}
+	caps, _ := s.store.NodeCapabilities(context.Background())
+	tpsByPK := make(map[string]float64, len(caps))
+	acuByPK := make(map[string]float64, len(caps))
+	for _, c := range caps {
+		fp := capability.Fingerprint{
+			Model: c.Model, Backend: c.Backend, PrefillTPS: c.PrefillTPS, DecodeTPS: c.DecodeTPS,
+			SustainedStartTPS: c.SustainedStartTPS, SustainedEndTPS: c.SustainedEndTPS,
+			MemBandwidthGBps: c.MemBandwidthGBps, AvailableRAMMB: c.AvailableRAMMB,
+			CPUCores: c.CPUCores, ThermalState: c.ThermalState,
+		}
+		t := c.SustainedEndTPS
+		if t <= 0 {
+			t = c.DecodeTPS
+		}
+		tpsByPK[c.StaticPK] = t
+		acuByPK[c.StaticPK] = capability.ACU(fp)
+	}
+
+	sup := marketplace.Supply{Nodes: len(cands)}
+	for _, p := range cands {
+		pk := base64.StdEncoding.EncodeToString(p.StaticPK[:])
+		if t, ok := tpsByPK[pk]; ok && t > 0 {
+			sup.AggregateTPS += t
+		} else {
+			sup.AggregateTPS += 10 // unbenchmarked node: conservative floor
+		}
+		if a := acuByPK[pk]; a > sup.TopACU {
+			sup.TopACU = a
+		}
+	}
+	return sup, nil
+}
+
+func (s *Server) classOf(model string) string {
+	if s.cat != nil {
+		return s.cat.ClassOf(model)
+	}
+	return ""
+}
+
+func (s *Server) hwClassOf(model string) string {
+	hw, _ := s.resolveModel(model)
+	return hw
+}
+
+func chunkItems(items []batch.Item, size int) [][]batch.Item {
+	if len(items) <= size {
+		return [][]batch.Item{items}
+	}
+	var out [][]batch.Item
+	for i := 0; i < len(items); i += size {
+		end := i + size
+		if end > len(items) {
+			end = len(items)
+		}
+		out = append(out, items[i:end])
+	}
+	return out
+}
+
+// mergeSummary appends src's items (re-indexed by offset) and provider counts
+// into dst, and folds token / OK / failed totals.
+func mergeSummary(dst, src *batch.Summary, offset int) {
+	for _, it := range src.Items {
+		it.Index += offset
+		dst.Items = append(dst.Items, it)
+	}
+	for id, n := range src.Providers {
+		dst.Providers[id] += n
+	}
+	dst.OK += src.OK
+	dst.Failed += src.Failed
+	dst.PromptTokens += src.PromptTokens
+	dst.CompletionTokens += src.CompletionTokens
+	if src.Concurrency > dst.Concurrency {
+		dst.Concurrency = src.Concurrency
+	}
+}
+
+func toBatchItems(in []batchItemReq) ([]batch.Item, string) {
+	out := make([]batch.Item, len(in))
+	for i, it := range in {
+		if len(it.Messages) == 0 {
+			return nil, "items[" + strconv.Itoa(i) + "] has no messages"
+		}
+		maxTok := defaultMaxTokens
+		if it.MaxTokens != nil && *it.MaxTokens > 0 {
+			maxTok = *it.MaxTokens
+		}
+		out[i] = batch.Item{
+			Messages: it.Messages,
+			Params: protocol.SamplingParams{
+				MaxTokens: maxTok, Temperature: it.Temperature, TopP: it.TopP, TopK: it.TopK,
+				Stop: it.Stop, Seed: it.Seed,
+			},
+		}
+	}
+	return out, ""
+}
+
+func round2usd(micros int64) float64 { return capability.Round2(float64(micros) / 1e6) }
+func round4usd(micros int64) float64 {
+	return float64(int64(float64(micros)/1e6*1e4+0.5)) / 1e4
+}

@@ -45,6 +45,13 @@ type Config struct {
 	// PriceMultiplier scales the whole rate card (default 1.0). A lever for tuning
 	// and for exercising payouts on tiny models during testing.
 	PriceMultiplier float64
+
+	// --- marketplace (M10.3) ---
+	// MarketplaceMargin is Ayni's cut on a workload quote, applied to
+	// (compute + coordination + failure). Default 0.30.
+	MarketplaceMargin float64
+	// QuoteTTLSeconds is how long a workload quote stays acceptable. Default 600.
+	QuoteTTLSeconds int
 }
 
 func Load() (Config, error) {
@@ -65,6 +72,8 @@ func Load() (Config, error) {
 		PublicBaseURL:              strings.TrimRight(getenv("SC_PUBLIC_BASE_URL", "https://ayni-ai.com"), "/"),
 		BillingEnforce:             getenv("SC_BILLING_ENFORCE", "") == "1",
 		PriceMultiplier:            getenvFloat("SC_PRICE_MULTIPLIER", 1.0),
+		MarketplaceMargin:          getenvFloat("SC_MARKETPLACE_MARGIN", 0.30),
+		QuoteTTLSeconds:            getenvInt("SC_QUOTE_TTL_SECONDS", 600),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

@@ -140,6 +140,23 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func renderBatch(model string, created int64, sum *batch.Summary) map[string]any {
+	return map[string]any{
+		"id":      "batch-" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		"object":  "batch.completion",
+		"created": created,
+		"model":   model,
+		"items":   renderBatchItems(sum),
+		"usage": map[string]int{
+			"prompt_tokens":     sum.PromptTokens,
+			"completion_tokens": sum.CompletionTokens,
+			"total_tokens":      sum.PromptTokens + sum.CompletionTokens,
+		},
+		"stats": batchStats(sum),
+	}
+}
+
+// renderBatchItems is the per-item view shared by /v1/batch and /v1/workloads.
+func renderBatchItems(sum *batch.Summary) []map[string]any {
 	out := make([]map[string]any, len(sum.Items))
 	for i, it := range sum.Items {
 		row := map[string]any{"index": it.Index, "latency_ms": it.LatencyMS}
@@ -154,25 +171,17 @@ func renderBatch(model string, created int64, sum *batch.Summary) map[string]any
 		}
 		out[i] = row
 	}
+	return out
+}
+
+func batchStats(sum *batch.Summary) map[string]any {
 	return map[string]any{
-		"id":      "batch-" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-		"object":  "batch.completion",
-		"created": created,
-		"model":   model,
-		"items":   out,
-		"usage": map[string]int{
-			"prompt_tokens":     sum.PromptTokens,
-			"completion_tokens": sum.CompletionTokens,
-			"total_tokens":      sum.PromptTokens + sum.CompletionTokens,
-		},
-		"stats": map[string]any{
-			"ok":          sum.OK,
-			"failed":      sum.Failed,
-			"fanout":      sum.Fanout,
-			"providers":   shortCounts(sum.Providers),
-			"concurrency": sum.Concurrency,
-			"wall_ms":     sum.WallMS,
-		},
+		"ok":          sum.OK,
+		"failed":      sum.Failed,
+		"fanout":      sum.Fanout,
+		"providers":   shortCounts(sum.Providers),
+		"concurrency": sum.Concurrency,
+		"wall_ms":     sum.WallMS,
 	}
 }
 
