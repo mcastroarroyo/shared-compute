@@ -154,6 +154,7 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 	q := pricing.QuoteJob(modelClass, res.TrustTier,
 		res.Usage.PromptTokens, res.Usage.CompletionTokens, s.cfg.PriceMultiplier, 1.0)
 	if e := s.store.RecordEarning(context.WithoutCancel(ctx), store.EarningEvent{
+		JobID:          res.JobID,
 		ProviderID:     res.ProviderID,
 		StaticPK:       res.ProviderPK,
 		KeyID:          keyIDFrom(ctx),

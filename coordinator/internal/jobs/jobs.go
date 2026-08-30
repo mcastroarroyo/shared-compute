@@ -20,34 +20,40 @@ type Event struct {
 	Raw  []byte // the raw JSON of the type-specific frame
 }
 
-// Manager tracks per-job delivery channels.
-type Manager struct {
-	mu sync.Mutex
-	m  map[string]chan Event
+type assignment struct {
+	providerID string
+	ch         chan Event
 }
 
-func New() *Manager { return &Manager{m: make(map[string]chan Event)} }
+// Manager tracks per-job delivery channels and the provider assigned to each job.
+type Manager struct {
+	mu sync.Mutex
+	m  map[string]assignment
+}
 
-// Register creates a delivery channel for jobID. The caller must Close(jobID) when done.
-func (m *Manager) Register(jobID string) <-chan Event {
+func New() *Manager { return &Manager{m: make(map[string]assignment)} }
+
+// Register creates a delivery channel bound to providerID. The caller must Close(jobID)
+// when done. Frames from every other provider connection are rejected by Deliver.
+func (m *Manager) Register(jobID, providerID string) <-chan Event {
 	ch := make(chan Event, 64)
 	m.mu.Lock()
-	m.m[jobID] = ch
+	m.m[jobID] = assignment{providerID: providerID, ch: ch}
 	m.mu.Unlock()
 	return ch
 }
 
-// Deliver forwards an event to the job's channel. Returns false if no such job or the
-// buffer is full (caller may treat a full buffer as a slow consumer and cancel).
-func (m *Manager) Deliver(jobID string, ev Event) bool {
+// Deliver forwards an event only when both jobID and providerID match the assignment.
+// Returns false for unknown jobs, foreign providers, or a full buffer.
+func (m *Manager) Deliver(jobID, providerID string, ev Event) bool {
 	m.mu.Lock()
-	ch, ok := m.m[jobID]
+	a, ok := m.m[jobID]
 	m.mu.Unlock()
-	if !ok {
+	if !ok || a.providerID != providerID {
 		return false
 	}
 	select {
-	case ch <- ev:
+	case a.ch <- ev:
 		return true
 	default:
 		return false
@@ -57,13 +63,13 @@ func (m *Manager) Deliver(jobID string, ev Event) bool {
 // Close removes and closes the job's channel.
 func (m *Manager) Close(jobID string) {
 	m.mu.Lock()
-	ch, ok := m.m[jobID]
+	a, ok := m.m[jobID]
 	if ok {
 		delete(m.m, jobID)
 	}
 	m.mu.Unlock()
 	if ok {
-		close(ch)
+		close(a.ch)
 	}
 }
 

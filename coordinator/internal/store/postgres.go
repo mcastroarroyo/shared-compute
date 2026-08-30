@@ -166,6 +166,9 @@ func (p *PG) RecordUsage(ctx context.Context, ev UsageEvent) error {
 }
 
 func (p *PG) RecordEarning(ctx context.Context, ev EarningEvent) error {
+	if ev.JobID == "" || ev.StaticPK == "" {
+		return fmt.Errorf("earning event requires job_id and static_pk")
+	}
 	var providerID any
 	if ev.ProviderID != "" {
 		providerID = ev.ProviderID
@@ -174,9 +177,10 @@ func (p *PG) RecordEarning(ctx context.Context, ev EarningEvent) error {
 	defer cancel()
 	_, err := p.pool.Exec(ct, `
 		INSERT INTO provider_earnings
-		  (provider_id, static_pk, key_id, model, model_class, tier, gross_micros, provider_micros)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		providerID, ev.StaticPK, ev.KeyID, ev.Model, ev.ModelClass, ev.Tier,
+		  (job_id, provider_id, static_pk, key_id, model, model_class, tier, gross_micros, provider_micros)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		ON CONFLICT DO NOTHING`,
+		ev.JobID, providerID, ev.StaticPK, ev.KeyID, ev.Model, ev.ModelClass, ev.Tier,
 		ev.GrossMicros, ev.ProviderMicros)
 	return err
 }
