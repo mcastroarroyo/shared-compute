@@ -4,7 +4,8 @@
 //! `ProviderListener` callback for lifecycle events.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use provider_lib::{EventSink, ProviderConfig, ProviderEvent};
 use tokio::runtime::Runtime;
@@ -60,10 +61,18 @@ pub trait ProviderListener: Send + Sync {
     fn on_event(&self, event: SpEvent);
 }
 
-struct Bridge(std::sync::Arc<dyn ProviderListener>);
+/// Forwards events to the app, but drops events from a superseded `start()` so a late
+/// error/disconnect from an old run can't clobber the current run's status.
+struct Bridge {
+    listener: Arc<dyn ProviderListener>,
+    generation: u64,
+    current: Arc<AtomicU64>,
+}
 impl EventSink for Bridge {
     fn on_event(&self, ev: ProviderEvent) {
-        self.0.on_event(map_event(ev));
+        if self.generation == self.current.load(Ordering::Acquire) {
+            self.listener.on_event(map_event(ev));
+        }
     }
 }
 
@@ -114,6 +123,7 @@ pub enum SpError {
 pub struct Provider {
     rt: Runtime,
     inner: Mutex<Option<Running>>,
+    generation: Arc<AtomicU64>,
 }
 
 struct Running {
@@ -132,9 +142,10 @@ impl Provider {
             .enable_all()
             .build()
             .expect("tokio runtime");
-        std::sync::Arc::new(Self {
+        Arc::new(Self {
             rt,
             inner: Mutex::new(None),
+            generation: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -151,14 +162,20 @@ impl Provider {
     pub fn start(
         &self,
         config: MobileConfig,
-        listener: std::sync::Arc<dyn ProviderListener>,
+        listener: Arc<dyn ProviderListener>,
     ) -> Result<(), SpError> {
         let mut guard = self.inner.lock().unwrap();
         if guard.as_ref().is_some_and(|r| !r.handle.is_finished()) {
             return Err(SpError::AlreadyRunning);
         }
+        // New generation: any trailing events from a previous run are now ignored.
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let sink = Arc::new(Bridge {
+            listener,
+            generation,
+            current: self.generation.clone(),
+        });
         let cfg: ProviderConfig = config.into();
-        let sink = std::sync::Arc::new(Bridge(listener));
         let cancel = CancellationToken::new();
         let c2 = cancel.clone();
         let handle = self.rt.spawn(async move {
@@ -172,8 +189,9 @@ impl Provider {
         Ok(())
     }
 
-    /// Stop the provider and wait briefly for it to wind down.
+    /// Stop the provider. Trailing events from the stopped run are ignored.
     pub fn stop(&self) {
+        self.generation.fetch_add(1, Ordering::AcqRel);
         if let Some(r) = self.inner.lock().unwrap().take() {
             r.cancel.cancel();
             r.handle.abort();

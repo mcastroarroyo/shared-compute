@@ -55,7 +55,9 @@ object ProviderController {
 
     @Synchronized
     fun start(ctx: Context, s: ProviderSettings) {
+        if (native?.isRunning() == true) return
         if (native == null) native = Provider()
+        _status.value = Status(Phase.CONNECTING)
         val cfg = MobileConfig(
             coordinatorUrl = s.coordinatorUrl,
             registrationToken = s.registrationToken,
