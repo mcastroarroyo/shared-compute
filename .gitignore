@@ -24,6 +24,7 @@
 *.key
 !**/testdata/*.key
 secrets/
+.registry/
 fly.local.toml
 
 # OS / editor

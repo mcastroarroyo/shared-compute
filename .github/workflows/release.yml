@@ -1,0 +1,78 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  provider:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            name: provider-daemon-macos-arm64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: provider-daemon-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: provider-daemon-linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: provider-core
+      - name: Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
+      - name: Build (llama, CPU)
+        run: |
+          cd provider-core
+          cargo build --release --target ${{ matrix.target }} \
+            --bin provider-daemon --features llama
+      - name: Package
+        run: |
+          cd provider-core/target/${{ matrix.target }}/release
+          tar czf "${{ matrix.name }}.tar.gz" provider-daemon
+          shasum -a 256 "${{ matrix.name }}.tar.gz" > "${{ matrix.name }}.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: provider-core/target/${{ matrix.target }}/release/${{ matrix.name }}.tar.gz*
+
+  modelctl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cd model-registry && cargo build --release
+      - run: |
+          cd model-registry/target/release
+          tar czf sc-modelctl-linux-x86_64.tar.gz sc-modelctl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sc-modelctl-linux-x86_64
+          path: model-registry/target/release/sc-modelctl-linux-x86_64.tar.gz
+
+  release:
+    needs: [provider, modelctl]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true

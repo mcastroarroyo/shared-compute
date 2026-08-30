@@ -1,0 +1,29 @@
+[Unit]
+Description=shared-compute inference provider
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.shared-compute/provider.env
+Environment=SC_LOG=info
+ExecStart=%h/.shared-compute/bin/provider-daemon
+Restart=always
+RestartSec=10
+Nice=5
+IOSchedulingClass=idle
+# Sandbox
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.shared-compute
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=false
+
+[Install]
+WantedBy=default.target

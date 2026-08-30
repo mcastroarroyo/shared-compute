@@ -91,15 +91,45 @@ curl -N https://api.<yourdomain>/v1/chat/completions \
 
 ## M3 — model registry (Cloudflare R2)
 
-1. Cloudflare dashboard → **R2** → *Purchase R2* (needs the card; ~$0.015/GB-mo, no egress).
+Registry signing key already generated: `secrets/ayni-registry-signing.key` (gitignored).
+Public key (pinned in `model-registry/PUBKEY`, providers verify against it):
+`p7UUs6aCFebGUfSvFV5Wczh7kYBCEW2tDRO+dV0IpDM=`
+
+1. Cloudflare dashboard → **R2** → *Enable R2* / add a card (~$0.015/GB-mo, **no egress fees**).
 2. **Create bucket** `models`.
-3. **Manage R2 API Tokens** → *Create API token* → Object Read & Write, scoped to `models`.
-   Copy the Access Key ID + Secret.
-4. R2 → bucket → Settings → **Public access / custom domain** → connect `models.<yourdomain>`.
-5. Give the keys to Claude's upload step via env (local shell only):
+3. **R2 → Manage R2 API Tokens → Create API Token** → *Object Read & Write*, scoped to
+   the `models` bucket. Copy **Access Key ID** + **Secret Access Key** + your **Account ID**.
+4. **R2 → `models` → Settings → Public access → Connect Domain** → `models.ayni-ai.com`
+   (Cloudflare adds the DNS record automatically for an R2 custom domain — proxied is fine
+   here, R2 is not a long-lived connection).
+5. Then, locally:
    ```bash
+   brew install rclone
    export R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=...
+   # stage + sign + upload the model we already have:
+   ./infra/publish-registry.sh add qwen2.5-0.5b-instruct-q4_k_m llama Q4_K_M MICRO 32768 \
+       models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+   ./infra/publish-registry.sh push
+   curl -s https://models.ayni-ai.com/manifest.json | head
    ```
+6. A provider then needs no local model — it pulls + verifies from the registry:
+   ```bash
+   source .env.local
+   SC_COORDINATOR_URL="$SC_COORDINATOR_WS" SC_REGISTRATION_TOKEN="$SC_REGISTRATION_TOKEN" \
+   SC_MANIFEST_URL="$SC_MANIFEST_URL" SC_REGISTRY_PUBKEY="$SC_REGISTRY_PUBKEY" \
+     ./infra/run-provider.sh
+   ```
+
+### Provider install (any macOS/Linux box)
+
+Grab `provider-daemon` from a GitHub Release (built by `.github/workflows/release.yml` on a
+`v*` tag) or `cargo build --release -p provider-daemon --features llama`, then:
+
+```bash
+./packaging/macos/install.sh  ./provider-daemon     # launchd (macOS)
+./packaging/linux/install.sh  ./provider-daemon     # systemd --user (Linux)
+# edit ~/.shared-compute/provider.env → set SC_REGISTRATION_TOKEN
+```
 
 ## M4 — console
 
