@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/scheduler"
@@ -67,17 +69,36 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	s.blockingChat(w, r, rr, id, created)
 }
 
-func mapRelayErr(w http.ResponseWriter, err error) {
+// relayErrInfo classifies a relay error into a metric label, HTTP status, and error code.
+func relayErrInfo(err error) (label string, status int, code, msg string) {
 	switch {
 	case errors.Is(err, scheduler.ErrNoProvider):
-		writeError(w, http.StatusServiceUnavailable, "no_provider", "no provider is currently serving this model")
+		return "no_provider", http.StatusServiceUnavailable, "no_provider", "no provider is currently serving this model"
 	case errors.Is(err, scheduler.ErrTierUnmet):
-		writeError(w, http.StatusConflict, "trust_tier_unmet", "no connected provider meets the requested trust level")
+		return "tier_unmet", http.StatusConflict, "trust_tier_unmet", "no connected provider meets the requested trust level"
 	case errors.Is(err, relay.ErrProviderGone):
-		writeError(w, http.StatusBadGateway, "provider_gone", "the assigned provider disconnected")
+		return "provider_gone", http.StatusBadGateway, "provider_gone", "the assigned provider disconnected"
+	case errors.Is(err, context.Canceled):
+		return "client_cancel", 499, "client_closed", "client closed the request"
 	default:
-		writeError(w, http.StatusInternalServerError, "internal", "the request could not be completed")
+		return "error", http.StatusInternalServerError, "internal", "the request could not be completed"
 	}
+}
+
+// mapRelayErr counts the failure and, if w != nil, writes the error response.
+func mapRelayErr(w http.ResponseWriter, err error) {
+	label, status, code, msg := relayErrInfo(err)
+	metrics.JobsTotal.WithLabelValues(label).Inc()
+	if w != nil && status != 499 {
+		writeError(w, status, code, msg)
+	}
+}
+
+// meter records token usage and a successful job.
+func meter(res *relay.Result) {
+	metrics.JobsTotal.WithLabelValues("ok").Inc()
+	metrics.TokensTotal.WithLabelValues("prompt").Add(float64(res.Usage.PromptTokens))
+	metrics.TokensTotal.WithLabelValues("completion").Add(float64(res.Usage.CompletionTokens))
 }
 
 // --- non-streaming ---
@@ -92,6 +113,7 @@ func (s *Server) blockingChat(w http.ResponseWriter, r *http.Request, rr relay.R
 		mapRelayErr(w, err)
 		return
 	}
+	meter(res)
 	resp := map[string]any{
 		"id":      id,
 		"object":  "chat.completion",
@@ -144,16 +166,23 @@ func (s *Server) streamChat(w http.ResponseWriter, r *http.Request, rr relay.Req
 	// role primer chunk, as OpenAI does
 	_ = sendChunk("", nil)
 
+	dispatch := time.Now()
+	first := true
 	res, err := relay.Execute(r.Context(), s.deps(), rr, func(delta string) error {
+		if first {
+			metrics.JobTTFT.Observe(time.Since(dispatch).Seconds())
+			first = false
+		}
 		return sendChunk(delta, nil)
 	})
 	if err != nil {
-		// Best-effort error event; the stream has already started.
+		mapRelayErr(nil, err) // count only; response already started
 		b, _ := json.Marshal(map[string]any{"error": map[string]string{"message": "upstream error", "type": "server_error"}})
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
 		flusher.Flush()
 		return
 	}
+	meter(res)
 
 	fin := res.FinishReason
 	if fin == "" {

@@ -16,6 +16,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/crypto"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 )
@@ -107,6 +108,7 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 		Send:         c.send,
 	}
 	h.Reg.Add(p)
+	metrics.ProvidersConnected.Inc()
 	h.Log.Info("provider registered",
 		"provider_id", p.ID,
 		"platform", reg.Capabilities.Platform,
@@ -116,6 +118,7 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 	)
 	defer func() {
 		h.Reg.Remove(p.ID)
+		metrics.ProvidersConnected.Dec()
 		h.Log.Info("provider disconnected", "provider_id", p.ID)
 	}()
 

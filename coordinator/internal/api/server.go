@@ -5,13 +5,17 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/wshub"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
@@ -31,11 +35,41 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, log
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.HandleFunc("GET /v1/models", s.withAuth(s.handleModels))
-	mux.HandleFunc("POST /v1/chat/completions", s.withAuth(s.handleChatCompletions))
+	mux.Handle("GET /healthz", instrument("healthz", http.HandlerFunc(s.handleHealth)))
+	mux.Handle("GET /metrics", promhttp.Handler())
+	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
+	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	return logRequests(s.log, mux)
+}
+
+// statusRecorder captures the response status for metrics.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// instrument records request count + duration for a route. The route label is a fixed
+// string, never derived from the URL, so no user data enters metrics.
+func instrument(route string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		metrics.HTTPDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
+		metrics.HTTPRequests.WithLabelValues(route, strconv.Itoa(rec.status/100)+"xx").Inc()
+	})
 }
 
 func (s *Server) deps() relay.Deps {

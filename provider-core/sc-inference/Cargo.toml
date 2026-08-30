@@ -7,16 +7,19 @@ license.workspace = true
 
 [features]
 default = []
-# Real llama.cpp backend, wired in the milestone after M1.
-llama = []
+# Real llama.cpp backend (embedded via the llama-cpp-2 crate; Metal on macOS,
+# CPU elsewhere). Off by default so the standard build stays light.
+llama = ["dep:llama-cpp-2", "dep:encoding_rs"]
 
 [dependencies]
 sc-protocol = { path = "../sc-protocol" }
 async-trait.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
 tokio-util.workspace = true
 tracing.workspace = true
+llama-cpp-2 = { version = "0.1.154", optional = true }
+encoding_rs = { version = "0.8", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
