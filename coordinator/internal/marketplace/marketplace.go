@@ -26,6 +26,9 @@ const (
 	MaxItems                = 5000
 	MaxRedundancy           = 3
 	DefaultCompletionTokens = 512
+	// ReferenceNodeTPS is one mid-range phone's sustained tok/s — the fallback
+	// throughput for a preview quote when no matching supply is online.
+	ReferenceNodeTPS = 12.0
 )
 
 // Spec is a validated workload request. Exactly one of Items or EstimateCount is

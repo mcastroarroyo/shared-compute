@@ -3,9 +3,18 @@ import Link from "next/link";
 import { WaitlistForm } from "../waitlist-form";
 
 export const metadata: Metadata = {
-  title: "Rent compute from Ayni",
+  title: "Run a workload on Ayni",
   description:
-    "OpenAI-compatible, end-to-end-encrypted inference served by a community network. Choose your hardware trust level.",
+    "Submit a batch job, get one quote and a completion estimate, and Ayni runs it across benchmarked community devices — end-to-end encrypted, never logged.",
+};
+
+const pre = {
+  background: "#0f1b3d",
+  color: "#dbe4ff",
+  padding: "18px 20px",
+  borderRadius: 12,
+  overflowX: "auto" as const,
+  fontSize: "0.92rem",
 };
 
 export default function Rent() {
@@ -13,11 +22,12 @@ export default function Rent() {
     <>
       <section className="hero wrap">
         <p className="kicker">Use the network</p>
-        <h1>Rent compute from Ayni.</h1>
-        <p className="lead" style={{ maxWidth: "48ch" }}>
-          An OpenAI-compatible API served by community devices. Every request is
+        <h1>Run a workload on Ayni.</h1>
+        <p className="lead" style={{ maxWidth: "50ch" }}>
+          Submit a batch of items, get one price and a completion estimate, and Ayni
+          fans it out across benchmarked community devices. Every request is
           end-to-end encrypted, runs on hardware you can require to be attested, and
-          is never logged in plaintext.
+          is never logged in plaintext. Single requests still work the OpenAI way.
         </p>
         <div className="cta">
           <Link href="/waitlist/?for=rent" className="btn btn-teal">
@@ -30,6 +40,35 @@ export default function Rent() {
       </section>
 
       <section className="wrap">
+        <h2>Quote a workload</h2>
+        <div className="prose">
+          <p>
+            <code>POST /v1/workloads</code> returns a price and an ETA built from the
+            live supply — how many eligible devices are online and what they
+            actually sustain. Accepting it runs the batch and charges you once, at
+            the quoted price.
+          </p>
+          <pre style={pre}>
+{`curl https://api.ayni-ai.com/v1/workloads \\
+  -H "Authorization: Bearer $AYNI_KEY" -H "Content-Type: application/json" \\
+  -d '{"model":"qwen2.5-0.5b-instruct-q4_k_m",
+       "items":[{"messages":[{"role":"user","content":"Summarize: ..."}],"max_tokens":160},
+                {"messages":[{"role":"user","content":"Summarize: ..."}],"max_tokens":160}]}'
+# -> { "id":"wl_...", "estimate":{"eta_seconds":...,"eligible_nodes":3},
+#      "price":{"total_usd":0.42,"breakdown_usd":{...}}, "accept_url":"/v1/workloads/wl_.../accept" }
+
+curl -X POST https://api.ayni-ai.com/v1/workloads/wl_.../accept \\
+  -H "Authorization: Bearer $AYNI_KEY"
+# -> { "object":"workload.result", "items":[ ...in submission order... ], "charged_usd":0.42 }`}
+          </pre>
+          <p>
+            Prefer to place the batch yourself? <code>POST /v1/batch</code> takes the
+            same items, fans them out immediately, and meters pay-as-you-go.
+          </p>
+        </div>
+      </section>
+
+      <section className="wrap">
         <h2>Drop-in compatible</h2>
         <div className="prose">
           <p>
@@ -37,16 +76,7 @@ export default function Rent() {
             blocking <code>/v1/chat/completions</code> and <code>/v1/models</code>{" "}
             work as you&rsquo;d expect.
           </p>
-          <pre
-            style={{
-              background: "#0f1b3d",
-              color: "#dbe4ff",
-              padding: "18px 20px",
-              borderRadius: 12,
-              overflowX: "auto",
-              fontSize: "0.92rem",
-            }}
-          >
+          <pre style={pre}>
 {`curl https://api.ayni-ai.com/v1/chat/completions \\
   -H "Authorization: Bearer $AYNI_KEY" \\
   -H "Content-Type: application/json" \\

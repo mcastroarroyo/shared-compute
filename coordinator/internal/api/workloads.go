@@ -123,6 +123,100 @@ func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, renderQuote(q))
 }
 
+// handleQuotePreview is the PUBLIC, unauthenticated version of a workload quote:
+// estimate-only (no items, no execution, nothing stored), so the marketing site
+// can show a real price + ETA without an account. Rate-limited per client IP.
+func (s *Server) handleQuotePreview(w http.ResponseWriter, r *http.Request) {
+	if !s.intakeAllowed(r) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "slow down")
+		return
+	}
+	var req struct {
+		Model      string               `json:"model"`
+		Estimate   *workloadEstimateReq `json:"estimate"`
+		Redundancy int                  `json:"redundancy"`
+		Tier       string               `json:"tier"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	if req.Model == "" || req.Estimate == nil || req.Estimate.Count <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request",
+			"model and estimate{count, avg_prompt_tokens, avg_completion_tokens} are required")
+		return
+	}
+	if req.Estimate.Count > marketplace.MaxItems {
+		writeError(w, http.StatusRequestEntityTooLarge, "too_many_items",
+			"preview is limited to "+strconv.Itoa(marketplace.MaxItems)+" items")
+		return
+	}
+	red := req.Redundancy
+	if red == 0 {
+		red = 1
+	}
+	if red < 1 || red > marketplace.MaxRedundancy {
+		writeError(w, http.StatusBadRequest, "invalid_request", "redundancy must be 1..3")
+		return
+	}
+	hwClass, ok := s.resolveModel(req.Model)
+	if !ok {
+		writeError(w, http.StatusNotFound, "model_not_found", "unknown model; see GET /v1/models")
+		return
+	}
+	tier := marketplace.NormalizeTier(req.Tier)
+	if h := marketplace.NormalizeTier(r.Header.Get("X-Provider-Trust-Level")); h != "community" {
+		tier = h
+	}
+
+	// Supply is best-effort: if nothing is online for this model, quote against
+	// one reference device so the visitor still sees a plausible ETA.
+	sup, serr := s.supplyFor(req.Model, tier, hwClass)
+	if serr != nil {
+		sup = marketplace.Supply{Nodes: 0, AggregateTPS: marketplace.ReferenceNodeTPS}
+	}
+
+	spec := marketplace.Spec{
+		Model:               req.Model,
+		ModelClass:          s.classOf(req.Model),
+		Tier:                tier,
+		Redundancy:          red,
+		EstimateCount:       req.Estimate.Count,
+		AvgPromptTokens:     req.Estimate.AvgPromptTokens,
+		AvgCompletionTokens: req.Estimate.AvgCompletionTokens,
+	}
+	est := marketplace.EstimateWorkload(spec, sup)
+	cost := pricing.QuoteWorkload(spec.ModelClass, tier, est.PromptTokens, est.CompletionTokens,
+		red, s.cfg.MarketplaceMargin, s.cfg.PriceMultiplier)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"object":        "workload.preview",
+		"model":         req.Model,
+		"tier":          tier,
+		"redundancy":    red,
+		"supply_online": sup.Nodes > 0,
+		"estimate": map[string]any{
+			"items":             est.Items,
+			"prompt_tokens":     est.PromptTokens,
+			"completion_tokens": est.CompletionTokens,
+			"eligible_nodes":    est.EligibleNodes,
+			"aggregate_tps":     est.AggregateTPS,
+			"eta_seconds":       est.ETASeconds,
+		},
+		"price": map[string]any{
+			"currency":  "usd",
+			"total_usd": round2usd(cost.TotalMicros),
+			"breakdown_usd": map[string]float64{
+				"compute_acquisition": round4usd(cost.ComputeMicros),
+				"coordination":        round4usd(cost.CoordinationMicros),
+				"expected_failure":    round4usd(cost.FailureMicros),
+				"payment_processing":  round4usd(cost.PaymentMicros),
+				"ayni_margin":         round4usd(cost.MarginMicros),
+			},
+		},
+	})
+}
+
 func (s *Server) handleGetWorkload(w http.ResponseWriter, r *http.Request) {
 	q, ok := s.quotes.Get(r.PathValue("id"))
 	if !ok || q.KeyID != keyIDFrom(r.Context()) {

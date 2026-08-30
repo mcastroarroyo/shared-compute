@@ -41,3 +41,39 @@ export function submitInitiative(input: {
 }) {
   return post("/initiatives", input);
 }
+
+export type QuotePreview = {
+  object: "workload.preview";
+  model: string;
+  tier: string;
+  redundancy: number;
+  supply_online: boolean;
+  estimate: {
+    items: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    eligible_nodes: number;
+    aggregate_tps: number;
+    eta_seconds: number;
+  };
+  price: {
+    currency: string;
+    total_usd: number;
+    breakdown_usd: {
+      compute_acquisition: number;
+      coordination: number;
+      expected_failure: number;
+      payment_processing: number;
+      ayni_margin: number;
+    };
+  };
+};
+
+// Live, unauthenticated quote preview — estimate only, nothing stored or run.
+export function quotePreview(input: {
+  model: string;
+  estimate: { count: number; avg_prompt_tokens: number; avg_completion_tokens: number };
+  redundancy?: number;
+}): Promise<QuotePreview> {
+  return post("/v1/quote", input) as Promise<QuotePreview>;
+}

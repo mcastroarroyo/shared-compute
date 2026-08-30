@@ -6,7 +6,7 @@ const links: [string, string, boolean][] = [
   ["/manifesto/", "Manifesto", false],
   ["/initiatives/", "Initiatives", false],
   ["/share/", "Share compute", false],
-  ["/rent/", "Rent compute", true],
+  ["/rent/", "Run a workload", true],
   ["/technology/", "Technology", true],
 ];
 

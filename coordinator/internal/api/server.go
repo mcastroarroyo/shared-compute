@@ -62,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.Handle("POST /v1/batch", instrument("v1_batch", s.withAuth(s.handleBatch)))
+	mux.Handle("POST /v1/quote", instrument("v1_quote", http.HandlerFunc(s.handleQuotePreview)))
 	mux.Handle("POST /v1/workloads", instrument("v1_workloads_create", s.withAuth(s.handleCreateWorkload)))
 	mux.Handle("GET /v1/workloads/{id}", instrument("v1_workloads_get", s.withAuth(s.handleGetWorkload)))
 	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.withAuth(s.handleAcceptWorkload)))

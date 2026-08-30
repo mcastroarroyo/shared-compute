@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { WaitlistForm } from "./waitlist-form";
+import { WorkloadBox } from "./workload-box";
 import { REPO, WHITEPAPER, LICENSE } from "./lib/api";
 
 export default function Home() {
@@ -7,25 +8,42 @@ export default function Home() {
     <>
       <section className="hero wrap">
         <p className="kicker">Ayni · Quechua for reciprocity</p>
-        <h1>Share the value of AI with the world.</h1>
+        <h1>The world&rsquo;s unused compute, on demand.</h1>
         <p className="lead">
-          AI is creating enormous value, and it is concentrating fast. Ayni is a
-          community building practical ways to spread that value — and a say in how
-          it is used — to everyone, including the people usually left out.
+          Tell Ayni what you want to run. It finds the right idle devices, gives you
+          one price and a completion estimate, executes the work, verifies it, and
+          pays every device that helped.
         </p>
         <div className="cta">
-          <Link href="/share/" className="btn btn-primary">
+          <Link href="/rent/" className="btn btn-primary">
+            Run a workload
+          </Link>
+          <Link href="/share/" className="btn btn-teal">
             Share your compute
           </Link>
-          <Link href="/rent/" className="btn btn-teal">
-            Rent compute
-          </Link>
-          <Link href="/initiatives/" className="btn btn-ghost">
-            Submit an initiative
-          </Link>
+          <a href={WHITEPAPER} className="btn btn-ghost">
+            Read the white paper
+          </a>
         </div>
         <p className="tags">
-          Open source · end-to-end encrypted · community-governed · no prompt logging
+          Open source · end-to-end encrypted · benchmarked devices · no prompt logging
+        </p>
+      </section>
+
+      <section className="wrap">
+        <p className="kicker">Live quote</p>
+        <h2>Price a batch job right now</h2>
+        <p className="lead" style={{ maxWidth: "54ch" }}>
+          Describe the work. This calls the real coordinator and returns the same
+          quote an API client would get — price, completion estimate, and how much
+          goes to the devices that run it.
+        </p>
+        <div style={{ marginTop: 22 }}>
+          <WorkloadBox />
+        </div>
+        <p className="note" style={{ marginTop: 12 }}>
+          Estimate only — nothing runs and nothing is stored until you accept a quote
+          with an API key.
         </p>
       </section>
 
@@ -74,7 +92,52 @@ export default function Home() {
       </section>
 
       <section className="wrap">
-        <p className="kicker">The first initiative</p>
+        <p className="kicker">How it works</p>
+        <h2>Quote, run, verify, pay</h2>
+        <div className="steps c4" style={{ marginTop: 24 }}>
+          <div className="step">
+            <h3>You describe the work</h3>
+            <p className="muted">
+              A model and a set of items — 200 or 5,000. Ayni benchmarks every
+              device itself, so it knows what each one can actually sustain.
+            </p>
+          </div>
+          <div className="step">
+            <h3>One quote</h3>
+            <p className="muted">
+              Price and completion estimate up front: device pay + coordination +
+              a failure buffer + payment costs + Ayni&rsquo;s margin. No per-bid
+              haggling.
+            </p>
+          </div>
+          <div className="step">
+            <h3>Fan-out execution</h3>
+            <p className="muted">
+              On accept, the coordinator splits the batch across eligible devices,
+              runs it in parallel end-to-end encrypted, and reassembles results in
+              order.
+            </p>
+          </div>
+          <div className="step">
+            <h3>Everyone gets paid</h3>
+            <p className="muted">
+              Each device accrues its share of every item it ran. You&rsquo;re
+              charged once, at the quoted price.
+            </p>
+          </div>
+        </div>
+        <div className="cta" style={{ marginTop: 24 }}>
+          <Link href="/rent/" className="btn btn-primary">
+            See the API
+          </Link>
+          <Link href="/technology/" className="btn btn-ghost">
+            How the encryption works
+          </Link>
+        </div>
+      </section>
+
+      <section className="wrap">
+        <p className="kicker">The supply side</p>
         <h2>Compute sharing</h2>
         <p className="lead" style={{ maxWidth: "52ch" }}>
           Turn the idle time on your phone, laptop, or GPU into private inference
