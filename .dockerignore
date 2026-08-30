@@ -1,0 +1,13 @@
+# Keep the build context small — the coordinator image only needs coordinator/.
+**/target/
+provider-core/
+model-registry/
+android-app/
+console/
+models/
+e2e-tests/
+docs/
+.git/
+*.gguf
+*.md
+.env*

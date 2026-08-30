@@ -10,7 +10,8 @@ app = "shared-compute-coordinator"
 primary_region = "iad"
 
 [build]
-  dockerfile = "infra/coordinator.Dockerfile"
+  # Relative to this file (infra/). The deploy passes --dockerfile explicitly anyway.
+  dockerfile = "coordinator.Dockerfile"
 
 [env]
   SC_HTTP_ADDR = ":8080"
