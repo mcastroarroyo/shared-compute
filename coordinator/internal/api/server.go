@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/catalog"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/ratelimit"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
@@ -29,13 +31,17 @@ type Server struct {
 	reg   *registry.Registry
 	job   *jobs.Manager
 	store store.Store
+	cat   *catalog.Catalog
+	rl    *ratelimit.Limiter
 	log   *slog.Logger
 	hub   *wshub.Hub
 }
 
-func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, log *slog.Logger) *Server {
+func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
 	return &Server{
-		cfg: cfg, reg: reg, job: job, store: st, log: log,
+		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
+		rl:  ratelimit.New(cfg.RatePerMin),
+		log: log,
 		hub: &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
 	}
 }
@@ -94,6 +100,12 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 		keyID, ok := s.store.ValidateConsumerKey(r.Context(), key)
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "invalid_api_key", "the API key is not recognized")
+			return
+		}
+		if allowed, retry := s.rl.Allow(keyID); !allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+			metrics.JobsTotal.WithLabelValues("rate_limited").Inc()
+			writeError(w, http.StatusTooManyRequests, "rate_limited", "request rate exceeded for this API key")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), ctxKeyID, keyID)))

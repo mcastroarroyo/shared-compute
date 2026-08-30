@@ -29,10 +29,12 @@ type Deps struct {
 }
 
 type Request struct {
-	Model    string
-	Messages []protocol.ChatMessage
-	Params   protocol.SamplingParams
-	MinTier  string
+	Model      string
+	Messages   []protocol.ChatMessage
+	Params     protocol.SamplingParams
+	MinTier    string
+	MinContext int    // from the model's catalog entry; 0 = don't care
+	HWClass    string // model's required hardware class; "" = don't care
 }
 
 type Result struct {
@@ -50,7 +52,12 @@ var ErrProviderGone = errors.New("provider disconnected during job")
 // It blocks until the job finishes, errors, or ctx is cancelled (client disconnect),
 // in which case a cancel is sent to the provider.
 func Execute(ctx context.Context, d Deps, req Request, onDelta func(string) error) (*Result, error) {
-	prov, err := scheduler.Pick(d.Reg, req.Model, req.MinTier)
+	prov, err := scheduler.Pick(d.Reg, scheduler.Requirements{
+		Model:      req.Model,
+		MinTier:    req.MinTier,
+		MinContext: req.MinContext,
+		HWClass:    req.HWClass,
+	})
 	if err != nil {
 		return nil, err
 	}

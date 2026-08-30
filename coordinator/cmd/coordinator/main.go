@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/api"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/catalog"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
@@ -53,9 +54,24 @@ func main() {
 	}
 	defer st.Close()
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	cat, err := catalog.New(cfg.ManifestURL, cfg.RegistryPubKey, log)
+	if err != nil {
+		log.Error("catalog", "err", err)
+		os.Exit(1)
+	}
+	if cat.Enabled() {
+		go cat.RunRefreshLoop(ctx, 5*time.Minute)
+		log.Info("model catalog: signed manifest", "url", cfg.ManifestURL)
+	} else {
+		log.Info("model catalog: provider union (set SC_MANIFEST_URL + SC_REGISTRY_PUBKEY)")
+	}
+
 	reg := registry.New()
 	job := jobs.New()
-	srv := api.NewServer(cfg, reg, job, st, log)
+	srv := api.NewServer(cfg, reg, job, st, cat, log)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -63,9 +79,6 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: SSE responses are long-lived.
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		log.Info("coordinator listening", "addr", cfg.HTTPAddr, "heartbeat_s", cfg.HeartbeatSeconds)

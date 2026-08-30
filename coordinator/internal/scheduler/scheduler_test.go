@@ -7,37 +7,39 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 )
 
-func mkProvider(id, model, tier string, memMB int) *registry.Provider {
+func mkProvider(id, model, tier, class string, memMB, maxCtx int) *registry.Provider {
 	return &registry.Provider{
 		ID:        id,
 		TrustTier: tier,
 		Capabilities: protocol.Capabilities{
-			Models: []string{model},
+			Models:        []string{model},
+			HardwareClass: class,
+			MaxContext:    maxCtx,
 		},
-		Telemetry: protocol.Telemetry{MemAvailableMB: memMB},
+		Telemetry: protocol.Telemetry{MemAvailableMB: memMB, ThermalState: "nominal"},
 		Send:      func(any) error { return nil },
 	}
 }
 
 func TestPickNoProvider(t *testing.T) {
 	reg := registry.New()
-	reg.Add(mkProvider("a", "model-x", "community", 1000))
-	if _, err := Pick(reg, "model-y", ""); err != ErrNoProvider {
+	reg.Add(mkProvider("a", "model-x", "community", "SMALL", 1000, 8192))
+	if _, err := Pick(reg, Requirements{Model: "model-y"}); err != ErrNoProvider {
 		t.Fatalf("want ErrNoProvider, got %v", err)
 	}
 }
 
 func TestPickLeastLoaded(t *testing.T) {
 	reg := registry.New()
-	busy := mkProvider("busy", "m", "community", 8000)
+	busy := mkProvider("busy", "m", "community", "SMALL", 8000, 8192)
 	busy.AcquireSlot()
 	busy.AcquireSlot()
-	idle := mkProvider("idle", "m", "community", 4000)
+	idle := mkProvider("idle", "m", "community", "SMALL", 4000, 8192)
 	idle.AcquireSlot()
 	reg.Add(busy)
 	reg.Add(idle)
 
-	got, err := Pick(reg, "m", "")
+	got, err := Pick(reg, Requirements{Model: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,17 +50,17 @@ func TestPickLeastLoaded(t *testing.T) {
 
 func TestPickTierUnmet(t *testing.T) {
 	reg := registry.New()
-	reg.Add(mkProvider("a", "m", "community", 1000))
-	if _, err := Pick(reg, "m", "confidential"); err != ErrTierUnmet {
+	reg.Add(mkProvider("a", "m", "community", "SMALL", 1000, 8192))
+	if _, err := Pick(reg, Requirements{Model: "m", MinTier: "confidential"}); err != ErrTierUnmet {
 		t.Fatalf("want ErrTierUnmet, got %v", err)
 	}
 }
 
 func TestPickHonorsTier(t *testing.T) {
 	reg := registry.New()
-	reg.Add(mkProvider("weak", "m", "community", 9000))
-	reg.Add(mkProvider("strong", "m", "device_attested", 1000))
-	got, err := Pick(reg, "m", "device_attested")
+	reg.Add(mkProvider("weak", "m", "community", "SMALL", 9000, 8192))
+	reg.Add(mkProvider("strong", "m", "device_attested", "SMALL", 1000, 8192))
+	got, err := Pick(reg, Requirements{Model: "m", MinTier: "device_attested"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,13 +69,49 @@ func TestPickHonorsTier(t *testing.T) {
 	}
 }
 
+func TestPickHardwareClass(t *testing.T) {
+	reg := registry.New()
+	reg.Add(mkProvider("micro", "big", "community", "MICRO", 4000, 8192))
+	reg.Add(mkProvider("large", "big", "community", "LARGE", 4000, 8192))
+	got, err := Pick(reg, Requirements{Model: "big", HWClass: "LARGE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "large" {
+		t.Fatalf("want large, got %s", got.ID)
+	}
+	// only MICRO available for a LARGE model -> caps unmet
+	reg2 := registry.New()
+	reg2.Add(mkProvider("micro", "big", "community", "MICRO", 4000, 8192))
+	if _, err := Pick(reg2, Requirements{Model: "big", HWClass: "LARGE"}); err != ErrCapsUnmet {
+		t.Fatalf("want ErrCapsUnmet, got %v", err)
+	}
+}
+
+func TestPickThermalTiebreak(t *testing.T) {
+	reg := registry.New()
+	hot := mkProvider("hot", "m", "community", "SMALL", 9000, 8192)
+	hot.Telemetry.ThermalState = "serious"
+	cool := mkProvider("cool", "m", "community", "SMALL", 1000, 8192)
+	cool.Telemetry.ThermalState = "nominal"
+	reg.Add(hot)
+	reg.Add(cool)
+	got, err := Pick(reg, Requirements{Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "cool" {
+		t.Fatalf("want cool, got %s", got.ID)
+	}
+}
+
 func TestPickSkipsDraining(t *testing.T) {
 	reg := registry.New()
-	d := mkProvider("draining", "m", "community", 9000)
+	d := mkProvider("draining", "m", "community", "SMALL", 9000, 8192)
 	d.SetDraining(true)
 	reg.Add(d)
-	reg.Add(mkProvider("ok", "m", "community", 1000))
-	got, err := Pick(reg, "m", "")
+	reg.Add(mkProvider("ok", "m", "community", "SMALL", 1000, 8192))
+	got, err := Pick(reg, Requirements{Model: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}

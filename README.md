@@ -19,7 +19,7 @@ Pre-alpha. Building milestone by milestone — see
 | M0 | Repo, protocol contract, toolchains, CI, local stack | **done** |
 | M1 | First end-to-end encrypted inference on localhost | **done** (mock + real llama.cpp/Metal) |
 | M2 | Coordinator online (Fly.io) with TLS | **done** — https://api.ayni-ai.com (Fly.io + Postgres, Let's Encrypt) |
-| M3 | Model registry (Cloudflare R2) + macOS/Linux provider packaging | **code done** — signed manifest, verified download, launchd/systemd installers, release CI. Pending: R2 bucket to host `models.ayni-ai.com` |
+| M3 | Model registry (Cloudflare R2) + macOS/Linux provider packaging | **done** — https://models.ayni-ai.com serving signed manifest + Qwen 0.5B; verified download works |
 | M4 | Scheduler, trust tiers, metering, web console | — |
 | M5 | Android provider app | — |
 | M6 | Android acceleration + hardware attestation (Tier 1) | — |

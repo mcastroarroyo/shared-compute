@@ -42,6 +42,23 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If a signed catalog is loaded, reject unknown models up front and carry the model's
+	// hardware class into scheduling.
+	var hwClass string
+	if s.cat != nil && s.cat.Enabled() && len(s.cat.Models()) > 0 {
+		found := false
+		for _, m := range s.cat.Models() {
+			if m.ModelID == req.Model {
+				found, hwClass = true, m.HardwareClass
+				break
+			}
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "model_not_found", "unknown model; see GET /v1/models")
+			return
+		}
+	}
+
 	maxTok := defaultMaxTokens
 	if req.MaxTokens != nil && *req.MaxTokens > 0 {
 		maxTok = *req.MaxTokens
@@ -50,6 +67,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		Model:    req.Model,
 		Messages: req.Messages,
 		MinTier:  strings.TrimSpace(r.Header.Get("X-Provider-Trust-Level")),
+		HWClass:  hwClass,
 		Params: protocol.SamplingParams{
 			MaxTokens:   maxTok,
 			Temperature: req.Temperature,
@@ -77,6 +95,8 @@ func relayErrInfo(err error) (label string, status int, code, msg string) {
 		return "no_provider", http.StatusServiceUnavailable, "no_provider", "no provider is currently serving this model"
 	case errors.Is(err, scheduler.ErrTierUnmet):
 		return "tier_unmet", http.StatusConflict, "trust_tier_unmet", "no connected provider meets the requested trust level"
+	case errors.Is(err, scheduler.ErrCapsUnmet):
+		return "caps_unmet", http.StatusServiceUnavailable, "capabilities_unmet", "no connected provider meets the model's resource requirements"
 	case errors.Is(err, relay.ErrProviderGone):
 		return "provider_gone", http.StatusBadGateway, "provider_gone", "the assigned provider disconnected"
 	case errors.Is(err, context.Canceled):

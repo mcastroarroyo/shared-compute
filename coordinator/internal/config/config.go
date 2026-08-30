@@ -17,12 +17,16 @@ type Config struct {
 	ProviderRegistrationTokens map[string]struct{}
 	// HeartbeatSeconds is advertised to providers in register_ack.
 	HeartbeatSeconds int
-	// ManifestURL is where /v1/models and model_pull point (M3+). Optional in M1.
+	// ManifestURL is the signed model registry base URL (e.g. https://models.ayni-ai.com).
 	ManifestURL string
+	// RegistryPubKey is the base64 Ed25519 key the manifest must be signed with.
+	RegistryPubKey string
 	// JobDeadlineMS bounds a single inference job.
 	JobDeadlineMS int64
 	// DatabaseURL, when set, switches persistence from in-memory to Postgres.
 	DatabaseURL string
+	// RatePerMin is the default per-API-key request budget (0 disables limiting).
+	RatePerMin int
 }
 
 func Load() (Config, error) {
@@ -32,8 +36,10 @@ func Load() (Config, error) {
 		ProviderRegistrationTokens: set(getenv("SC_PROVIDER_TOKENS", "dev-provider-token")),
 		HeartbeatSeconds:           getenvInt("SC_HEARTBEAT_SECONDS", 15),
 		ManifestURL:                getenv("SC_MANIFEST_URL", ""),
+		RegistryPubKey:             getenv("SC_REGISTRY_PUBKEY", ""),
 		JobDeadlineMS:              int64(getenvInt("SC_JOB_DEADLINE_MS", 120000)),
 		DatabaseURL:                getenv("SC_DATABASE_URL", ""),
+		RatePerMin:                 getenvInt("SC_RATE_PER_MIN", 120),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")
