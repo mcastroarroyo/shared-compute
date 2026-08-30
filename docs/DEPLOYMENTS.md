@@ -1,5 +1,21 @@
 # Live deployments
 
+| Service | URL | Host |
+|---|---|---|
+| Coordinator API | https://api.ayni-ai.com | Fly.io `ayni-coordinator` + Fly Postgres |
+| Model registry | https://models.ayni-ai.com | Cloudflare R2 bucket `models` |
+| Operator console | https://ayni-console.pages.dev | Cloudflare Pages `ayni-console` (auto-deploy on push to `main`) |
+| Source | github.com/mcastroarroyo/shared-compute (private) | GitHub Actions CI on every push |
+
+## Console — M4
+
+Cloudflare Pages project **`ayni-console`**, connected to the GitHub repo:
+- Root directory `console`, build `npm run build`, output `out`
+- Env: `NEXT_PUBLIC_COORDINATOR_URL = https://api.ayni-ai.com`
+- Every push to `main` triggers a rebuild + deploy
+- First visit: **Settings** → paste the admin token (`.env.local` → `SC_ADMIN_TOKEN`) and a
+  consumer key; both are kept in that browser's `localStorage` only
+
 ## Coordinator — M2
 
 | | |
