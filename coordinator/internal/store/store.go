@@ -69,6 +69,22 @@ type ProviderAccrual struct {
 	OwedMicros int64  `json:"owed_micros"`
 }
 
+// NodeCapabilityRow is a provider's latest self-benchmark fingerprint.
+type NodeCapabilityRow struct {
+	StaticPK          string    `json:"static_pk"`
+	Model             string    `json:"model"`
+	Backend           string    `json:"backend"`
+	PrefillTPS        float64   `json:"prefill_tps"`
+	DecodeTPS         float64   `json:"decode_tps"`
+	SustainedStartTPS float64   `json:"sustained_start_tps"`
+	SustainedEndTPS   float64   `json:"sustained_end_tps"`
+	MemBandwidthGBps  float64   `json:"mem_bandwidth_gbps"`
+	AvailableRAMMB    uint64    `json:"available_ram_mb"`
+	CPUCores          int       `json:"cpu_cores"`
+	ThermalState      string    `json:"thermal_state"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
 // PayoutAccount links a provider identity to a Stripe Connect account.
 type PayoutAccount struct {
 	StaticPK      string `json:"static_pk"`
@@ -161,6 +177,11 @@ type Store interface {
 	GetPayoutAccount(ctx context.Context, staticPK string) (PayoutAccount, bool, error)
 	// PayoutAccountByStripe reverse-looks-up by Stripe account id (webhook path).
 	PayoutAccountByStripe(ctx context.Context, stripeAccount string) (PayoutAccount, bool, error)
+
+	// UpsertNodeCapability stores a provider's latest benchmark fingerprint.
+	UpsertNodeCapability(ctx context.Context, c NodeCapabilityRow) error
+	// NodeCapabilities returns all stored fingerprints.
+	NodeCapabilities(ctx context.Context) ([]NodeCapabilityRow, error)
 	// AccruedByProvider sums unpaid provider_earnings per payout identity.
 	AccruedByProvider(ctx context.Context) ([]ProviderAccrual, error)
 	// RecordPayoutAndSettle inserts a payout row and marks that identity's accrued

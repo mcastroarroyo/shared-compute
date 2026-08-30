@@ -249,7 +249,7 @@ pub struct JobError {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkReport {
     #[serde(rename = "type")]
     pub kind: String,
@@ -261,6 +261,28 @@ pub struct BenchmarkReport {
     pub context_tested: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sample_ms: Option<u32>,
+
+    // --- M10 capability fingerprint (all optional; older providers omit them) ---
+    /// Length of the sustained-throughput run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sustained_seconds: Option<u32>,
+    /// Decode tok/s in the first window of the sustained run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sustained_start_tps: Option<f64>,
+    /// Decode tok/s in the last window — the throughput the scheduler should price on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sustained_end_tps: Option<f64>,
+    /// Measured memory read bandwidth, GB/s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mem_bandwidth_gbps: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available_ram_mb: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available_storage_mb: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_cores: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thermal_state: Option<String>,
 }
 
 // --------------------------------------------------------------------------------------

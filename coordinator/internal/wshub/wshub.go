@@ -4,6 +4,7 @@ package wshub
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/attest"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/capability"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/crypto"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
@@ -209,8 +211,27 @@ func (h *Hub) dispatch(c *conn, p *registry.Provider, frame protocol.Frame) {
 	case protocol.TypeBenchmarkReport:
 		var br protocol.BenchmarkReport
 		_ = frame.As(&br)
+		pk := base64.StdEncoding.EncodeToString(p.StaticPK[:])
+		fp := capability.Fingerprint{
+			Model: br.Model, Backend: br.Backend,
+			PrefillTPS: br.PrefillTPS, DecodeTPS: br.DecodeTPS,
+			SustainedStartTPS: br.SustainedStartTPS, SustainedEndTPS: br.SustainedEndTPS,
+			MemBandwidthGBps: br.MemBandwidthGBps, AvailableRAMMB: br.AvailableRAMMB,
+			CPUCores: br.CPUCores, ThermalState: br.ThermalState,
+		}
 		h.Log.Info("benchmark_report", "provider_id", p.ID, "model", br.Model,
-			"backend", br.Backend, "prefill_tps", br.PrefillTPS, "decode_tps", br.DecodeTPS)
+			"decode_tps", br.DecodeTPS, "sustained_end_tps", br.SustainedEndTPS,
+			"mem_gbps", br.MemBandwidthGBps, "acu", capability.ACU(fp),
+			"class", capability.Class(fp))
+		if err := h.Store.UpsertNodeCapability(context.Background(), store.NodeCapabilityRow{
+			StaticPK: pk, Model: br.Model, Backend: br.Backend,
+			PrefillTPS: br.PrefillTPS, DecodeTPS: br.DecodeTPS,
+			SustainedStartTPS: br.SustainedStartTPS, SustainedEndTPS: br.SustainedEndTPS,
+			MemBandwidthGBps: br.MemBandwidthGBps, AvailableRAMMB: br.AvailableRAMMB,
+			CPUCores: br.CPUCores, ThermalState: br.ThermalState,
+		}); err != nil {
+			h.Log.Warn("upsert node capability failed", "err", err)
+		}
 
 	case protocol.TypeJobChunk:
 		h.deliver(p, frame, jobs.KindChunk)

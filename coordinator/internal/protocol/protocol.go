@@ -159,6 +159,16 @@ type BenchmarkReport struct {
 	DecodeTPS     float64 `json:"decode_tps"`
 	ContextTested int     `json:"context_tested,omitempty"`
 	SampleMS      int     `json:"sample_ms,omitempty"`
+
+	// M10 capability fingerprint (optional).
+	SustainedSeconds   int     `json:"sustained_seconds,omitempty"`
+	SustainedStartTPS  float64 `json:"sustained_start_tps,omitempty"`
+	SustainedEndTPS    float64 `json:"sustained_end_tps,omitempty"`
+	MemBandwidthGBps   float64 `json:"mem_bandwidth_gbps,omitempty"`
+	AvailableRAMMB     uint64  `json:"available_ram_mb,omitempty"`
+	AvailableStorageMB uint64  `json:"available_storage_mb,omitempty"`
+	CPUCores           int     `json:"cpu_cores,omitempty"`
+	ThermalState       string  `json:"thermal_state,omitempty"`
 }
 
 // --- coordinator -> provider ---

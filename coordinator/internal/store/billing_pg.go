@@ -91,6 +91,50 @@ func (p *PG) PayoutAccountByStripe(ctx context.Context, stripeAccount string) (P
 	return a, err == nil, err
 }
 
+func (p *PG) UpsertNodeCapability(ctx context.Context, c NodeCapabilityRow) error {
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := p.pool.Exec(ct, `
+		INSERT INTO node_capabilities
+		  (static_pk, model, backend, prefill_tps, decode_tps, sustained_start_tps,
+		   sustained_end_tps, mem_bandwidth_gbps, available_ram_mb, cpu_cores, thermal_state, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+		ON CONFLICT (static_pk) DO UPDATE SET
+		  model=EXCLUDED.model, backend=EXCLUDED.backend, prefill_tps=EXCLUDED.prefill_tps,
+		  decode_tps=EXCLUDED.decode_tps, sustained_start_tps=EXCLUDED.sustained_start_tps,
+		  sustained_end_tps=EXCLUDED.sustained_end_tps, mem_bandwidth_gbps=EXCLUDED.mem_bandwidth_gbps,
+		  available_ram_mb=EXCLUDED.available_ram_mb, cpu_cores=EXCLUDED.cpu_cores,
+		  thermal_state=EXCLUDED.thermal_state, updated_at=now()`,
+		c.StaticPK, c.Model, c.Backend, c.PrefillTPS, c.DecodeTPS, c.SustainedStartTPS,
+		c.SustainedEndTPS, c.MemBandwidthGBps, int64(c.AvailableRAMMB), c.CPUCores, c.ThermalState)
+	return err
+}
+
+func (p *PG) NodeCapabilities(ctx context.Context) ([]NodeCapabilityRow, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT static_pk, model, backend, prefill_tps, decode_tps, sustained_start_tps,
+		       sustained_end_tps, mem_bandwidth_gbps, available_ram_mb, cpu_cores,
+		       thermal_state, updated_at
+		FROM node_capabilities ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NodeCapabilityRow
+	for rows.Next() {
+		var c NodeCapabilityRow
+		var ram int64
+		if err := rows.Scan(&c.StaticPK, &c.Model, &c.Backend, &c.PrefillTPS, &c.DecodeTPS,
+			&c.SustainedStartTPS, &c.SustainedEndTPS, &c.MemBandwidthGBps, &ram, &c.CPUCores,
+			&c.ThermalState, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		c.AvailableRAMMB = uint64(ram)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func (p *PG) AccruedByProvider(ctx context.Context) ([]ProviderAccrual, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT static_pk, count(*), coalesce(sum(provider_micros),0)

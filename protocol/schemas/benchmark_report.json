@@ -10,7 +10,16 @@
     "prefill_tps": { "type": "number", "minimum": 0 },
     "decode_tps": { "type": "number", "minimum": 0 },
     "context_tested": { "type": "integer", "minimum": 1 },
-    "sample_ms": { "type": "integer", "minimum": 0 }
+    "sample_ms": { "type": "integer", "minimum": 0 },
+
+    "sustained_seconds": { "type": "integer", "minimum": 0 },
+    "sustained_start_tps": { "type": "number", "minimum": 0 },
+    "sustained_end_tps": { "type": "number", "minimum": 0 },
+    "mem_bandwidth_gbps": { "type": "number", "minimum": 0 },
+    "available_ram_mb": { "type": "integer", "minimum": 0 },
+    "available_storage_mb": { "type": "integer", "minimum": 0 },
+    "cpu_cores": { "type": "integer", "minimum": 0 },
+    "thermal_state": { "type": "string", "maxLength": 32 }
   },
   "required": ["type", "model", "backend", "prefill_tps", "decode_tps"]
 }

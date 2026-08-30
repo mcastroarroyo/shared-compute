@@ -28,6 +28,7 @@ type Mem struct {
 	credits     map[string]int64         // key_id -> micros
 	topupRefs   map[string]struct{}      // idempotency for topups
 	payoutAccts map[string]PayoutAccount // static_pk -> account
+	nodeCaps    map[string]NodeCapabilityRow
 	accrued     map[string]*ProviderAccrual
 	nextPayout  int64
 	usage       atomic.Int64
@@ -52,6 +53,7 @@ func NewMem(consumerKeys, providerTokens map[string]struct{}) *Mem {
 		credits:     map[string]int64{},
 		topupRefs:   map[string]struct{}{},
 		payoutAccts: map[string]PayoutAccount{},
+		nodeCaps:    map[string]NodeCapabilityRow{},
 		accrued:     map[string]*ProviderAccrual{},
 	}
 }
@@ -226,6 +228,24 @@ func (m *Mem) PayoutAccountByStripe(_ context.Context, stripeAccount string) (Pa
 		}
 	}
 	return PayoutAccount{}, false, nil
+}
+
+func (m *Mem) UpsertNodeCapability(_ context.Context, c NodeCapabilityRow) error {
+	c.UpdatedAt = time.Now()
+	m.mu.Lock()
+	m.nodeCaps[c.StaticPK] = c
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Mem) NodeCapabilities(_ context.Context) ([]NodeCapabilityRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]NodeCapabilityRow, 0, len(m.nodeCaps))
+	for _, c := range m.nodeCaps {
+		out = append(out, c)
+	}
+	return out, nil
 }
 
 func (m *Mem) AccruedByProvider(_ context.Context) ([]ProviderAccrual, error) {

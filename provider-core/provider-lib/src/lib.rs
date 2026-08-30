@@ -3,6 +3,7 @@
 //!
 //! Prompt and completion text are never logged.
 
+pub mod benchmark;
 mod identity;
 mod job;
 
@@ -290,6 +291,28 @@ pub async fn run(
 
     let active = Arc::new(AtomicU32::new(0));
     let jobs: Arc<Mutex<HashMap<String, CancellationToken>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    // Self-benchmark → benchmark_report. Runs off the hot path; results are cached
+    // on disk so this is a no-op on most reconnects.
+    {
+        let tx = tx.clone();
+        let backend = backend.clone();
+        let model = cfg.model.clone();
+        let data_dir = id_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        tokio::spawn(async move {
+            benchmark::run_or_cached(&backend, &model, &data_dir, |report| {
+                if let Ok(bytes) = proto::to_frame(&report, None) {
+                    if let Ok(s) = String::from_utf8(bytes) {
+                        let _ = tx.send(WsMessage::Text(s));
+                    }
+                }
+            })
+            .await;
+        });
+    }
 
     // Heartbeat.
     {

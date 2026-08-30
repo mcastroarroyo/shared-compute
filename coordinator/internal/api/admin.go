@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/capability"
 )
 
 // admin routes are mounted only when SC_ADMIN_TOKEN is set. They back the web console:
@@ -21,6 +23,7 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.Handle("POST /admin/keys/{id}/disable", s.withAdmin(s.adminSetKey(true)))
 	mux.Handle("POST /admin/keys/{id}/enable", s.withAdmin(s.adminSetKey(false)))
 	mux.Handle("GET /admin/providers", s.withAdmin(s.adminProviders))
+	mux.Handle("GET /admin/nodes", s.withAdmin(s.adminNodes))
 	mux.Handle("GET /admin/usage", s.withAdmin(s.adminUsage))
 	mux.Handle("GET /admin/earnings", s.withAdmin(s.adminEarnings))
 	mux.Handle("GET /admin/waitlist", s.withAdmin(s.adminWaitlist))
@@ -108,6 +111,61 @@ func (s *Server) adminProviders(w http.ResponseWriter, _ *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"providers": out, "count": len(out)})
+}
+
+// adminNodes lists provider capability fingerprints with the derived ACU / class
+// and whether the node is connected right now — the marketplace's view of supply.
+func (s *Server) adminNodes(w http.ResponseWriter, r *http.Request) {
+	caps, err := s.store.NodeCapabilities(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_failed", "could not read capabilities")
+		return
+	}
+	online := map[string]bool{}
+	for _, p := range s.reg.Snapshot() {
+		online[base64.StdEncoding.EncodeToString(p.StaticPK[:])] = true
+	}
+	type node struct {
+		StaticPK          string  `json:"static_pk"`
+		Online            bool    `json:"online"`
+		Model             string  `json:"model"`
+		Backend           string  `json:"backend"`
+		DecodeTPS         float64 `json:"decode_tps"`
+		SustainedStartTPS float64 `json:"sustained_start_tps"`
+		SustainedEndTPS   float64 `json:"sustained_end_tps"`
+		ThermalDecayPct   float64 `json:"thermal_decay_pct"`
+		MemBandwidthGBps  float64 `json:"mem_bandwidth_gbps"`
+		AvailableRAMMB    uint64  `json:"available_ram_mb"`
+		CPUCores          int     `json:"cpu_cores"`
+		ACU               float64 `json:"acu"`
+		Class             string  `json:"class"`
+		UpdatedAt         string  `json:"updated_at"`
+	}
+	var out []node
+	var totalACU float64
+	for _, c := range caps {
+		fp := capability.Fingerprint{
+			Model: c.Model, Backend: c.Backend, PrefillTPS: c.PrefillTPS, DecodeTPS: c.DecodeTPS,
+			SustainedStartTPS: c.SustainedStartTPS, SustainedEndTPS: c.SustainedEndTPS,
+			MemBandwidthGBps: c.MemBandwidthGBps, AvailableRAMMB: c.AvailableRAMMB,
+			CPUCores: c.CPUCores, ThermalState: c.ThermalState,
+		}
+		acu := capability.ACU(fp)
+		if online[c.StaticPK] {
+			totalACU += acu
+		}
+		out = append(out, node{
+			StaticPK: c.StaticPK, Online: online[c.StaticPK], Model: c.Model, Backend: c.Backend,
+			DecodeTPS: c.DecodeTPS, SustainedStartTPS: c.SustainedStartTPS,
+			SustainedEndTPS: c.SustainedEndTPS, ThermalDecayPct: capability.ThermalDecayPct(fp),
+			MemBandwidthGBps: c.MemBandwidthGBps, AvailableRAMMB: c.AvailableRAMMB,
+			CPUCores: c.CPUCores, ACU: acu, Class: capability.Class(fp),
+			UpdatedAt: c.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nodes": out, "count": len(out), "online_acu_total": capability.Round2(totalACU),
+	})
 }
 
 func (s *Server) adminUsage(w http.ResponseWriter, r *http.Request) {
