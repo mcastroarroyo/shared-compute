@@ -56,6 +56,18 @@ struct Args {
     #[arg(long, env = "SC_BACKEND", default_value = "mock")]
     backend: String,
 
+    /// Signed model registry base URL, e.g. https://models.ayni-ai.com
+    #[arg(long, env = "SC_MANIFEST_URL")]
+    manifest_url: Option<String>,
+
+    /// Base64 Ed25519 public key that the registry manifest must be signed with.
+    #[arg(long, env = "SC_REGISTRY_PUBKEY")]
+    registry_pubkey: Option<String>,
+
+    /// Local model cache directory. Default: $HOME/.shared-compute/models
+    #[arg(long, env = "SC_MODEL_DIR")]
+    model_dir: Option<PathBuf>,
+
     /// Identity key file. Default: $HOME/.shared-compute/identity.key
     #[arg(long, env = "SC_IDENTITY_PATH")]
     identity_path: Option<PathBuf>,
@@ -75,16 +87,55 @@ fn hardware_class(ram_mb: u64) -> &'static str {
     }
 }
 
-fn build_backend(args: &Args) -> Result<Arc<dyn InferenceBackend>> {
+#[cfg_attr(not(feature = "llama"), allow(dead_code))]
+fn model_dir(args: &Args) -> PathBuf {
+    args.model_dir.clone().unwrap_or_else(|| {
+        identity::default_path()
+            .parent()
+            .map(|p| p.join("models"))
+            .unwrap_or_else(|| PathBuf::from(".shared-compute/models"))
+    })
+}
+
+/// Resolve the on-disk GGUF path for `args.model`: an explicit `--model-path`, else a
+/// verified download from the signed registry, else a file already in the cache dir.
+#[cfg_attr(not(feature = "llama"), allow(dead_code))]
+async fn resolve_model_path(args: &Args) -> Result<PathBuf> {
+    use sc_models::ModelStore;
+
+    if let Some(p) = &args.model_path {
+        return Ok(p.clone());
+    }
+    let store = ModelStore::new(model_dir(args));
+
+    if let Some(url) = &args.manifest_url {
+        let pk = args
+            .registry_pubkey
+            .as_deref()
+            .context("SC_REGISTRY_PUBKEY is required when SC_MANIFEST_URL is set")?;
+        info!(url, model = %args.model, "fetching signed manifest");
+        let manifest = ModelStore::fetch_manifest(url, pk)
+            .await
+            .context("fetch/verify manifest")?;
+        let resolved = store
+            .ensure(url, &args.model, &manifest)
+            .await
+            .context("download/verify model")?;
+        return Ok(resolved.primary_path);
+    }
+
+    store
+        .resolve_local(&args.model, None)
+        .context("model not found locally; set SC_MODEL_PATH or SC_MANIFEST_URL")
+}
+
+async fn build_backend(args: &Args) -> Result<Arc<dyn InferenceBackend>> {
     match args.backend.as_str() {
         "mock" => Ok(Arc::new(MockBackend::default())),
         "llama" => {
             #[cfg(feature = "llama")]
             {
-                let path = args
-                    .model_path
-                    .clone()
-                    .context("--model-path is required for the llama backend")?;
+                let path = resolve_model_path(args).await?;
                 Ok(Arc::new(sc_inference::LlamaCppBackend::load(
                     &args.model,
                     &path,
@@ -123,7 +174,7 @@ async fn main() -> Result<()> {
     let static_pk_b64 = sc_crypto::encode_public(&keypair.public);
 
     let host = sc_telemetry::host_info();
-    let backend = build_backend(&args)?;
+    let backend = build_backend(&args).await?;
     let attest = NullAttestation;
 
     let caps = proto::Capabilities {

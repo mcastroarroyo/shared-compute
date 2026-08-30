@@ -1165,6 +1165,7 @@ dependencies = [
  "sc-attest",
  "sc-crypto",
  "sc-inference",
+ "sc-manifest",
  "sc-models",
  "sc-net",
  "sc-protocol",
