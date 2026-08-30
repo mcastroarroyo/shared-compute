@@ -1,0 +1,44 @@
+:root {
+  --bg: #0b0d10;
+  --panel: #14171c;
+  --border: #262b33;
+  --text: #e6e8eb;
+  --muted: #8b929e;
+  --accent: #5b8def;
+  --good: #3fb950;
+  --bad: #f85149;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+.wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; }
+nav { display: flex; gap: 18px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+nav .brand { font-weight: 700; letter-spacing: .3px; }
+nav a { color: var(--muted); }
+nav a.active { color: var(--text); }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 28px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+input, textarea, select { background: #0e1116; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font: inherit; }
+input, select { min-width: 220px; }
+textarea { width: 100%; min-height: 72px; resize: vertical; }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px;
+  font: inherit; font-weight: 600; cursor: pointer; }
+button.secondary { background: #222834; color: var(--text); }
+button:disabled { opacity: .5; cursor: default; }
+.pill { padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); }
+.pill.good { color: var(--good); border-color: #1c3a24; }
+.pill.bad { color: var(--bad); border-color: #4a1f1f; }
+.err { color: var(--bad); margin: 8px 0; }
+.muted { color: var(--muted); }
+.bubble { padding: 10px 12px; border-radius: 10px; margin: 8px 0; white-space: pre-wrap; }
+.bubble.user { background: #1b2330; }
+.bubble.assistant { background: #16211a; }
+code { background: #0e1116; padding: 1px 5px; border-radius: 4px; }
