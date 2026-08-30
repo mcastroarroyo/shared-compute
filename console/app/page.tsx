@@ -7,6 +7,7 @@ export default function Overview() {
   const [providers, setProviders] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
+  const [earn, setEarn] = useState<any>(null);
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
@@ -20,6 +21,7 @@ export default function Overview() {
     try {
       setProviders((await api.providers()).providers || []);
       setUsage((await api.usage(24)).rows || []);
+      setEarn(await api.earnings(168));
     } catch (e: any) {
       setErr((p) => p || "admin: " + e.message + " (set an admin token in Settings)");
     }
@@ -122,6 +124,54 @@ export default function Overview() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <h2>Provider earnings · shadow ledger (7d)</h2>
+      <div className="panel">
+        <div className="muted" style={{ marginBottom: 8 }}>
+          Accrual only — no payouts run yet (see docs/PAYMENTS.md). Amounts are
+          estimates from the placeholder rate card.
+        </div>
+        {!earn || (earn.rows || []).length === 0 ? (
+          <span className="muted">nothing accrued yet</span>
+        ) : (
+          <>
+            <div className="row" style={{ gap: 14, marginBottom: 10 }}>
+              <div className="panel" style={{ flex: 1 }}>
+                <div className="muted">Provider payouts owed (est.)</div>
+                <div style={{ fontSize: 22 }}>
+                  ${(earn.provider_usd_total ?? 0).toFixed(5)}
+                </div>
+              </div>
+              <div className="panel" style={{ flex: 1 }}>
+                <div className="muted">Gross billed (est.)</div>
+                <div style={{ fontSize: 22 }}>
+                  ${((earn.gross_micros_total ?? 0) / 1e6).toFixed(5)}
+                </div>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Jobs</th>
+                  <th>Gross (est. $)</th>
+                  <th>Provider share (est. $)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {earn.rows.map((r: any, i: number) => (
+                  <tr key={i}>
+                    <td className="mono">{(r.provider_id || "—").slice(0, 8)}</td>
+                    <td>{r.jobs}</td>
+                    <td>${(r.gross_micros / 1e6).toFixed(5)}</td>
+                    <td>${(r.provider_micros / 1e6).toFixed(5)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       <h2>Usage by key · model (24h)</h2>

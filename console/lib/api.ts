@@ -54,6 +54,7 @@ export const api = {
   },
   providers: () => adminFetch("/admin/providers"),
   usage: (hours = 24) => adminFetch(`/admin/usage?since_hours=${hours}`),
+  earnings: (hours = 168) => adminFetch(`/admin/earnings?since_hours=${hours}`),
   keys: () => adminFetch("/admin/keys"),
   createKey: (label: string) =>
     adminFetch("/admin/keys", { method: "POST", body: JSON.stringify({ label }) }),
