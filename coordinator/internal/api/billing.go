@@ -112,8 +112,15 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "read_failed", "could not read body")
 		return
 	}
-	event, err := webhook.ConstructEvent(payload, r.Header.Get("Stripe-Signature"), s.cfg.StripeWebhookSecret)
+	event, err := webhook.ConstructEventWithOptions(payload, r.Header.Get("Stripe-Signature"),
+		s.cfg.StripeWebhookSecret, webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
 	if err != nil {
+		sec := s.cfg.StripeWebhookSecret
+		if len(sec) > 12 {
+			sec = sec[:12] + "…"
+		}
+		s.log.Warn("stripe webhook rejected", "err", err, "secret_prefix", sec,
+			"sig_present", r.Header.Get("Stripe-Signature") != "")
 		writeError(w, http.StatusBadRequest, "bad_signature", "signature verification failed")
 		return
 	}
