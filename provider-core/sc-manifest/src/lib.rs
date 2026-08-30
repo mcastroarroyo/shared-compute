@@ -78,11 +78,16 @@ impl Manifest {
 
     /// Verify a base64 detached signature against a verifying key.
     pub fn verify(&self, sig_b64: &str, vk: &VerifyingKey) -> Result<(), ManifestError> {
-        let raw = B64.decode(sig_b64.trim()).map_err(|e| ManifestError::B64(e.to_string()))?;
+        let raw = B64
+            .decode(sig_b64.trim())
+            .map_err(|e| ManifestError::B64(e.to_string()))?;
         let arr: [u8; 64] = raw
             .as_slice()
             .try_into()
-            .map_err(|_| ManifestError::KeyLen { want: 64, got: raw.len() })?;
+            .map_err(|_| ManifestError::KeyLen {
+                want: 64,
+                got: raw.len(),
+            })?;
         let sig = Signature::from_bytes(&arr);
         vk.verify(&self.canonical_bytes()?, &sig)
             .map_err(|_| ManifestError::BadSignature)
@@ -126,11 +131,16 @@ pub fn hex(bytes: &[u8]) -> String {
 
 /// Parse a base64 Ed25519 public key (32 bytes).
 pub fn parse_verifying_key(b64: &str) -> Result<VerifyingKey, ManifestError> {
-    let raw = B64.decode(b64.trim()).map_err(|e| ManifestError::B64(e.to_string()))?;
+    let raw = B64
+        .decode(b64.trim())
+        .map_err(|e| ManifestError::B64(e.to_string()))?;
     let arr: [u8; 32] = raw
         .as_slice()
         .try_into()
-        .map_err(|_| ManifestError::KeyLen { want: 32, got: raw.len() })?;
+        .map_err(|_| ManifestError::KeyLen {
+            want: 32,
+            got: raw.len(),
+        })?;
     VerifyingKey::from_bytes(&arr).map_err(|_| ManifestError::BadSignature)
 }
 
@@ -156,8 +166,16 @@ mod tests {
                 context_length: 8192,
                 aggregate_sha256: aggregate_sha256(&["aa".into(), "bb".into()]),
                 files: vec![
-                    ManifestFile { name: "m.gguf".into(), sha256: "aa".into(), bytes: 10 },
-                    ManifestFile { name: "m.1.gguf".into(), sha256: "bb".into(), bytes: 20 },
+                    ManifestFile {
+                        name: "m.gguf".into(),
+                        sha256: "aa".into(),
+                        bytes: 10,
+                    },
+                    ManifestFile {
+                        name: "m.1.gguf".into(),
+                        sha256: "bb".into(),
+                        bytes: 20,
+                    },
                 ],
                 tokenizer_sha256: String::new(),
                 chat_template_sha256: String::new(),
@@ -177,11 +195,17 @@ mod tests {
         // Tamper: different model id must fail against the old signature.
         let mut m2 = m.clone();
         m2.models[0].model_id = "changed".into();
-        assert!(matches!(m2.verify(&sig, &vk), Err(ManifestError::BadSignature)));
+        assert!(matches!(
+            m2.verify(&sig, &vk),
+            Err(ManifestError::BadSignature)
+        ));
 
         // Wrong key must fail.
         let other = SigningKey::generate(&mut OsRng).verifying_key();
-        assert!(matches!(m.verify(&sig, &other), Err(ManifestError::BadSignature)));
+        assert!(matches!(
+            m.verify(&sig, &other),
+            Err(ManifestError::BadSignature)
+        ));
     }
 
     #[test]
