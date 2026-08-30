@@ -47,16 +47,22 @@ func revShare(tier string) float64 {
 	return 0.70
 }
 
-// Quote prices a job. qualityMult (typically 1.0) is applied to the provider accrual
-// only; pass 1.0 until a quality signal exists.
-func QuoteJob(modelClass, tier string, promptTokens, completionTokens int, qualityMult float64) Quote {
+// QuoteJob prices a job. priceMult scales the whole rate card (1.0 = card as-is;
+// a lever for tuning and for exercising payouts on tiny models). qualityMult
+// (typically 1.0) is applied to the provider accrual only.
+func QuoteJob(modelClass, tier string, promptTokens, completionTokens int, priceMult, qualityMult float64) Quote {
 	class := strings.ToUpper(strings.TrimSpace(modelClass))
 	r, ok := rateCard[class]
 	if !ok {
 		r = rateCard["SMALL"] // unknown class: charge as SMALL rather than free
 		class = "SMALL"
 	}
-	base := int64(promptTokens)*r.inPerM/1_000_000 + int64(completionTokens)*r.outPerM/1_000_000
+	if priceMult <= 0 {
+		priceMult = 1.0
+	}
+	inPerM := int64(float64(r.inPerM) * priceMult)
+	outPerM := int64(float64(r.outPerM) * priceMult)
+	base := int64(promptTokens)*inPerM/1_000_000 + int64(completionTokens)*outPerM/1_000_000
 	gross := int64(float64(base) * tierMultiplier(tier))
 	if qualityMult <= 0 {
 		qualityMult = 1.0

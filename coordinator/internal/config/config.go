@@ -40,6 +40,9 @@ type Config struct {
 	// BillingEnforce, when true, rejects inference from a consumer key with a
 	// non-positive credit balance (402). Off by default so nothing breaks until opt-in.
 	BillingEnforce bool
+	// PriceMultiplier scales the whole rate card (default 1.0). A lever for tuning
+	// and for exercising payouts on tiny models during testing.
+	PriceMultiplier float64
 }
 
 func Load() (Config, error) {
@@ -58,6 +61,7 @@ func Load() (Config, error) {
 		StripeWebhookSecret:        getenv("SC_STRIPE_WEBHOOK_SECRET", ""),
 		PublicBaseURL:              strings.TrimRight(getenv("SC_PUBLIC_BASE_URL", "https://ayni-ai.com"), "/"),
 		BillingEnforce:             getenv("SC_BILLING_ENFORCE", "") == "1",
+		PriceMultiplier:            getenvFloat("SC_PRICE_MULTIPLIER", 1.0),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")
@@ -82,6 +86,15 @@ func getenvInt(k string, def int) int {
 	if v := os.Getenv(k); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func getenvFloat(k string, def float64) float64 {
+	if v := os.Getenv(k); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			return f
 		}
 	}
 	return def
