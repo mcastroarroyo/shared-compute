@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ayni-security"
+version = "0.1.0"
+description = "Ayni cyber harness and multi-model Council governance core"
+requires-python = ">=3.12"
+dependencies = ["cryptography==46.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ayni_security*"]

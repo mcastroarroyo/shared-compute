@@ -50,6 +50,9 @@ type Result struct {
 // ErrProviderGone means the chosen provider dropped mid-job.
 var ErrProviderGone = errors.New("provider disconnected during job")
 
+// ErrInvalidProviderResult means the assigned provider violated the result protocol.
+var ErrInvalidProviderResult = errors.New("provider returned an invalid result")
+
 // ErrDeadline means the job ran past Cfg.JobDeadlineMS.
 var ErrDeadline = errors.New("job exceeded deadline")
 
@@ -96,7 +99,7 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 		return nil, fmt.Errorf("seal job: %w", err)
 	}
 
-	ch := d.Job.Register(jobID)
+	ch := d.Job.Register(jobID, prov.ID)
 	defer d.Job.Close(jobID)
 	prov.AcquireSlot()
 	defer prov.ReleaseSlot()
@@ -117,6 +120,14 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 
 	jobDeadline := time.NewTimer(time.Duration(deadline) * time.Millisecond)
 	defer jobDeadline.Stop()
+
+	expectedSeq := 0
+	maxPromptUnits := 0
+	for _, message := range req.Messages {
+		// This is a coordinator-authored hard ceiling, not tokenizer-accurate billing.
+		// It prevents a provider from claiming an unbounded prompt-token count.
+		maxPromptUnits += len([]byte(message.Role)) + len([]byte(message.Content)) + 16
+	}
 
 	for {
 		select {
@@ -147,6 +158,12 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 				if err := json.Unmarshal(plain, &cp); err != nil {
 					return nil, fmt.Errorf("bad chunk plaintext: %w", err)
 				}
+				if jc.JobID != jobID || cp.JobID != jobID || cp.Seq != expectedSeq ||
+					expectedSeq >= req.Params.MaxTokens {
+					_ = prov.Send(protocol.Cancel{Type: protocol.TypeCancel, JobID: jobID, Reason: "invalid-result"})
+					return nil, ErrInvalidProviderResult
+				}
+				expectedSeq++
 				if cp.Delta != "" {
 					if err := onDelta(cp.Delta); err != nil {
 						_ = prov.Send(protocol.Cancel{Type: protocol.TypeCancel, JobID: jobID, Reason: "client-disconnect"})
@@ -159,6 +176,14 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 				if err := json.Unmarshal(ev.Raw, &jd); err != nil {
 					return nil, fmt.Errorf("bad job_done: %w", err)
 				}
+				if jd.JobID != jobID || jd.Usage.CompletionTokens != expectedSeq ||
+					jd.Usage.PromptTokens < 0 || jd.Usage.PromptTokens > maxPromptUnits {
+					return nil, ErrInvalidProviderResult
+				}
+				// Completion count is independently observed from the authenticated,
+				// strictly ordered chunk stream. Provider usage remains advisory.
+				jd.Usage.CompletionTokens = expectedSeq
+				jd.Usage.TotalTokens = jd.Usage.PromptTokens + expectedSeq
 				return &Result{
 					Usage:        jd.Usage,
 					FinishReason: jd.FinishReason,
@@ -190,6 +215,8 @@ func ErrCode(err error) (code, msg string) {
 		return "capabilities_unmet", "no connected provider meets the model's resource requirements"
 	case errors.Is(err, ErrProviderGone):
 		return "provider_gone", "the assigned provider disconnected"
+	case errors.Is(err, ErrInvalidProviderResult):
+		return "invalid_provider_result", "the assigned provider returned an invalid result"
 	case errors.Is(err, ErrDeadline):
 		return "deadline", "the job exceeded the coordinator deadline"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

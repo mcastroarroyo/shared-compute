@@ -51,6 +51,7 @@ type UsageRow struct {
 
 // EarningEvent is one job's accrual for a provider (see docs/PAYMENTS.md).
 type EarningEvent struct {
+	JobID          string
 	ProviderID     string
 	StaticPK       string // base64 X25519 — the durable payout identity
 	KeyID          string
@@ -168,7 +169,7 @@ type Store interface {
 	// CreditBalance returns a consumer key's credit balance in micro-USD (0 if none).
 	CreditBalance(ctx context.Context, keyID string) (int64, error)
 	// AddCredit applies a signed delta and appends a ledger row. For reason "topup"
-	// a non-empty stripeRef makes it idempotent (a duplicate returns nil, no change).
+	// a non-empty stripeRef makes it idempotent; debits are idempotent on non-empty jobID.
 	AddCredit(ctx context.Context, keyID string, deltaMicros int64, reason, stripeRef, jobID string) error
 
 	// UpsertPayoutAccount links (or updates) a Stripe Connect account for a provider identity.
