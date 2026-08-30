@@ -16,6 +16,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
 )
 
 func main() {
@@ -32,9 +33,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	var st store.Store
+	if cfg.DatabaseURL != "" {
+		pg, err := store.NewPG(context.Background(), cfg.DatabaseURL, log,
+			cfg.ConsumerAPIKeys, cfg.ProviderRegistrationTokens)
+		if err != nil {
+			log.Error("database", "err", err)
+			os.Exit(1)
+		}
+		if err := pg.Migrate(context.Background()); err != nil {
+			log.Error("migrate", "err", err)
+			os.Exit(1)
+		}
+		log.Info("persistence: postgres")
+		st = pg
+	} else {
+		log.Info("persistence: in-memory (set SC_DATABASE_URL for durable keys + usage)")
+		st = store.NewMem(cfg.ConsumerAPIKeys, cfg.ProviderRegistrationTokens)
+	}
+	defer st.Close()
+
 	reg := registry.New()
 	job := jobs.New()
-	srv := api.NewServer(cfg, reg, job, log)
+	srv := api.NewServer(cfg, reg, job, st, log)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,

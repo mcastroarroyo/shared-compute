@@ -21,6 +21,8 @@ type Config struct {
 	ManifestURL string
 	// JobDeadlineMS bounds a single inference job.
 	JobDeadlineMS int64
+	// DatabaseURL, when set, switches persistence from in-memory to Postgres.
+	DatabaseURL string
 }
 
 func Load() (Config, error) {
@@ -31,6 +33,7 @@ func Load() (Config, error) {
 		HeartbeatSeconds:           getenvInt("SC_HEARTBEAT_SECONDS", 15),
 		ManifestURL:                getenv("SC_MANIFEST_URL", ""),
 		JobDeadlineMS:              int64(getenvInt("SC_JOB_DEADLINE_MS", 120000)),
+		DatabaseURL:                getenv("SC_DATABASE_URL", ""),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

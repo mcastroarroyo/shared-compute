@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -14,22 +15,28 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/wshub"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+type ctxKey int
+
+const ctxKeyID ctxKey = 0
+
 type Server struct {
-	cfg config.Config
-	reg *registry.Registry
-	job *jobs.Manager
-	log *slog.Logger
-	hub *wshub.Hub
+	cfg   config.Config
+	reg   *registry.Registry
+	job   *jobs.Manager
+	store store.Store
+	log   *slog.Logger
+	hub   *wshub.Hub
 }
 
-func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, log *slog.Logger) *Server {
+func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, log *slog.Logger) *Server {
 	return &Server{
-		cfg: cfg, reg: reg, job: job, log: log,
-		hub: &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Log: log},
+		cfg: cfg, reg: reg, job: job, store: st, log: log,
+		hub: &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
 	}
 }
 
@@ -76,7 +83,7 @@ func (s *Server) deps() relay.Deps {
 	return relay.Deps{Reg: s.reg, Job: s.job, Cfg: s.cfg, Log: s.log}
 }
 
-// withAuth checks the consumer Bearer API key.
+// withAuth checks the consumer Bearer API key and stashes its stable id in the context.
 func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := bearer(r)
@@ -84,12 +91,20 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "missing_api_key", "provide an API key via Authorization: Bearer")
 			return
 		}
-		if _, ok := s.cfg.ConsumerAPIKeys[key]; !ok {
+		keyID, ok := s.store.ValidateConsumerKey(r.Context(), key)
+		if !ok {
 			writeError(w, http.StatusUnauthorized, "invalid_api_key", "the API key is not recognized")
 			return
 		}
-		next(w, r)
+		next(w, r.WithContext(context.WithValue(r.Context(), ctxKeyID, keyID)))
 	}
+}
+
+func keyIDFrom(ctx context.Context) string {
+	if v, ok := ctx.Value(ctxKeyID).(string); ok {
+		return v
+	}
+	return ""
 }
 
 func bearer(r *http.Request) string {

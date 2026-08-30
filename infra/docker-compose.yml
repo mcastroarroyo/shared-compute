@@ -1,8 +1,8 @@
 # Local full-stack for development.
 #   docker compose -f infra/docker-compose.yml up --build
 #
-# M1: only `coordinator` is needed. `postgres` and `minio` are here so the stack matches
-# the M2/M3 shape; the coordinator does not depend on them until then.
+# `coordinator` + `postgres` come up by default. `minio` (the R2 stand-in) is behind the
+# "m3" profile until the model registry work.
 
 services:
   coordinator:
@@ -11,16 +11,19 @@ services:
       dockerfile: infra/coordinator.Dockerfile
     ports:
       - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       SC_HTTP_ADDR: ":8080"
       SC_CONSUMER_API_KEYS: "dev-consumer-key"
       SC_PROVIDER_TOKENS: "dev-provider-token"
       SC_HEARTBEAT_SECONDS: "15"
+      SC_DATABASE_URL: "postgres://sc:sc@postgres:5432/sharedcompute?sslmode=disable"
       SC_DEBUG: "1"
 
   postgres:
     image: postgres:17-alpine
-    profiles: ["m2"]
     environment:
       POSTGRES_USER: sc
       POSTGRES_PASSWORD: sc
@@ -29,6 +32,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   minio:
     image: minio/minio:latest

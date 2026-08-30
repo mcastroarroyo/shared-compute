@@ -19,6 +19,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
 )
 
 const (
@@ -29,10 +30,11 @@ const (
 
 // Hub handles /ws/provider.
 type Hub struct {
-	Cfg config.Config
-	Reg *registry.Registry
-	Job *jobs.Manager
-	Log *slog.Logger
+	Cfg   config.Config
+	Reg   *registry.Registry
+	Job   *jobs.Manager
+	Store store.Store
+	Log   *slog.Logger
 }
 
 // conn wraps a websocket with a write mutex; concurrent writers are serialized.
@@ -83,7 +85,7 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 		_ = c.send(protocol.RegisterAck{Type: protocol.TypeRegisterAck, OK: false, Error: "internal"})
 		return
 	}
-	if _, ok := h.Cfg.ProviderRegistrationTokens[reg.RegistrationToken]; !ok {
+	if !h.Store.ValidateProviderToken(r.Context(), reg.RegistrationToken) {
 		_ = c.send(protocol.RegisterAck{Type: protocol.TypeRegisterAck, OK: false, Error: "bad-token"})
 		_ = ws.Close(websocket.StatusPolicyViolation, "bad token")
 		return
@@ -109,6 +111,15 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Reg.Add(p)
 	metrics.ProvidersConnected.Inc()
+	if err := h.Store.UpsertProvider(r.Context(), store.ProviderRecord{
+		ProviderID: p.ID,
+		StaticPK:   reg.StaticPK,
+		Platform:   reg.Capabilities.Platform,
+		Arch:       reg.Capabilities.Arch,
+		Backend:    reg.Capabilities.Backend,
+	}); err != nil {
+		h.Log.Warn("upsert provider failed", "err", err)
+	}
 	h.Log.Info("provider registered",
 		"provider_id", p.ID,
 		"platform", reg.Capabilities.Platform,

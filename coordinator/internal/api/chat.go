@@ -14,6 +14,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/scheduler"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
 )
 
 type chatRequest struct {
@@ -94,11 +95,26 @@ func mapRelayErr(w http.ResponseWriter, err error) {
 	}
 }
 
-// meter records token usage and a successful job.
-func meter(res *relay.Result) {
+// meter records token usage and a successful job, and appends a usage event.
+func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 	metrics.JobsTotal.WithLabelValues("ok").Inc()
 	metrics.TokensTotal.WithLabelValues("prompt").Add(float64(res.Usage.PromptTokens))
 	metrics.TokensTotal.WithLabelValues("completion").Add(float64(res.Usage.CompletionTokens))
+
+	// Best-effort; never fail the response on a metering error.
+	err := s.store.RecordUsage(context.WithoutCancel(ctx), store.UsageEvent{
+		KeyID:            keyIDFrom(ctx),
+		ProviderID:       res.ProviderID,
+		Model:            model,
+		Tier:             res.TrustTier,
+		PromptTokens:     res.Usage.PromptTokens,
+		CompletionTokens: res.Usage.CompletionTokens,
+		DurationMS:       0,
+		FinishReason:     res.FinishReason,
+	})
+	if err != nil {
+		s.log.Warn("record usage failed", "err", err)
+	}
 }
 
 // --- non-streaming ---
@@ -113,7 +129,7 @@ func (s *Server) blockingChat(w http.ResponseWriter, r *http.Request, rr relay.R
 		mapRelayErr(w, err)
 		return
 	}
-	meter(res)
+	s.meter(r.Context(), rr.Model, res)
 	resp := map[string]any{
 		"id":      id,
 		"object":  "chat.completion",
@@ -182,7 +198,7 @@ func (s *Server) streamChat(w http.ResponseWriter, r *http.Request, rr relay.Req
 		flusher.Flush()
 		return
 	}
-	meter(res)
+	s.meter(r.Context(), rr.Model, res)
 
 	fin := res.FinishReason
 	if fin == "" {

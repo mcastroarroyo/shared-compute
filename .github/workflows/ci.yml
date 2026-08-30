@@ -24,9 +24,22 @@ jobs:
 
   coordinator:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sc
+          POSTGRES_PASSWORD: sc
+          POSTGRES_DB: sharedcompute_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sc" --health-interval 5s
+          --health-timeout 3s --health-retries 10
     defaults:
       run:
         working-directory: coordinator
+    env:
+      SC_TEST_DATABASE_URL: postgres://sc:sc@localhost:5432/sharedcompute_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
