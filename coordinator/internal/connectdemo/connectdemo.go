@@ -336,6 +336,9 @@ func (h *Handler) listItems(ctx context.Context) ([]storeItem, error) {
 	var items []storeItem
 	list := h.sc.V1Products.List(ctx, &stripe.ProductListParams{
 		Active: stripe.Bool(true),
+		// Without this the list returns default_price as a bare id, so UnitAmount
+		// would read 0. Expand it to get the real amount for the storefront.
+		Expand: []*string{stripe.String("data.default_price")},
 	})
 	for p, err := range list.All(ctx) {
 		if err != nil {
@@ -645,13 +648,17 @@ func (h *Handler) storefront(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<h2>Seller <code>` + html.EscapeString(acct) + `</code></h2><div class="panel"><table>
       <tr><th>Product</th><th>Price</th><th></th></tr>`)
 		for _, it := range byAcct[acct] {
-			b.WriteString(fmt.Sprintf(`<tr><td>%s<br><span class="muted">%s</span></td><td>%s %.2f</td>
-        <td><form method="post" action="/connect/buy">
-          <input type="hidden" name="product_id" value="%s">
+			priceCell := fmt.Sprintf("%s %.2f", strings.ToUpper(it.Currency), float64(it.Cents)/100)
+			buyCell := `<form method="post" action="/connect/buy">
+          <input type="hidden" name="product_id" value="` + html.EscapeString(it.ProductID) + `">
           <button type="submit">Buy</button>
-        </form></td></tr>`,
-				html.EscapeString(it.Name), html.EscapeString(it.Desc),
-				strings.ToUpper(it.Currency), float64(it.Cents)/100, html.EscapeString(it.ProductID)))
+        </form>`
+			if it.Cents <= 0 {
+				priceCell = `<span class="muted">no price set</span>`
+				buyCell = `<span class="muted">—</span>`
+			}
+			b.WriteString(fmt.Sprintf(`<tr><td>%s<br><span class="muted">%s</span></td><td>%s</td><td>%s</td></tr>`,
+				html.EscapeString(it.Name), html.EscapeString(it.Desc), priceCell, buyCell))
 		}
 		b.WriteString(`</table></div>`)
 	}
