@@ -370,12 +370,21 @@ func (s *Server) adminPayoutsRun(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		res.Account = pa.StripeAccount
-		if !commit {
+		// Stripe transfers whole cents. Pay the floor; re-accrue the sub-cent dust.
+		cents := a.OwedMicros / 10_000
+		if cents < 1 {
+			res.Skipped = "below 1 cent"
 			results = append(results, res)
-			totalMicros += a.OwedMicros
 			continue
 		}
-		cents := a.OwedMicros / 10_000
+		payMicros := cents * 10_000
+		remainder := a.OwedMicros - payMicros
+		res.AmountUSD = float64(payMicros) / 1e6
+		if !commit {
+			results = append(results, res)
+			totalMicros += payMicros
+			continue
+		}
 		tr, terr := s.stripe.V1Transfers.Create(context.WithoutCancel(r.Context()), &stripe.TransferCreateParams{
 			Amount:      stripe.Int64(cents),
 			Currency:    stripe.String("usd"),
@@ -386,7 +395,7 @@ func (s *Server) adminPayoutsRun(w http.ResponseWriter, r *http.Request) {
 			s.log.Warn("stripe transfer failed", "err", terr, "acct", pa.StripeAccount)
 			_, _ = s.store.RecordPayoutAndSettle(context.WithoutCancel(r.Context()), store.PayoutRecord{
 				StaticPK: a.StaticPK, StripeAccount: pa.StripeAccount,
-				AmountMicros: a.OwedMicros, State: "failed",
+				AmountMicros: payMicros, State: "failed",
 			})
 			res.Skipped = "transfer failed: " + terr.Error()
 			results = append(results, res)
@@ -394,11 +403,12 @@ func (s *Server) adminPayoutsRun(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = s.store.RecordPayoutAndSettle(context.WithoutCancel(r.Context()), store.PayoutRecord{
 			StaticPK: a.StaticPK, StripeAccount: pa.StripeAccount,
-			AmountMicros: a.OwedMicros, StripeTransfer: tr.ID, State: "created",
+			AmountMicros: payMicros, StripeTransfer: tr.ID, State: "created",
+			RemainderMicros: remainder,
 		})
 		res.Transfer = tr.ID
 		results = append(results, res)
-		totalMicros += a.OwedMicros
+		totalMicros += payMicros
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"dry_run":   !commit,
@@ -415,4 +425,57 @@ func shortPK(pk string) string {
 		return pk[:8]
 	}
 	return pk
+}
+
+// handlePayoutWebhook consumes Connect THIN events so payout-account status stays
+// current without the operator hitting "Re-check". Subscribe the destination to
+// v2.core.account[requirements].updated and
+// v2.core.account[configuration.recipient].capability_status_updated.
+func (s *Server) handlePayoutWebhook(w http.ResponseWriter, r *http.Request) {
+	if s.stripe == nil || s.cfg.StripeConnectWebhookSecret == "" {
+		writeError(w, http.StatusNotImplemented, "webhook_not_configured",
+			"set SC_STRIPE_CONNECT_WEBHOOK_SECRET")
+		return
+	}
+	payload, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 256*1024))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read_failed", "could not read body")
+		return
+	}
+	container, err := s.stripe.ParseEventNotification(payload, r.Header.Get("Stripe-Signature"),
+		s.cfg.StripeConnectWebhookSecret)
+	if err != nil {
+		s.log.Warn("payout webhook rejected", "err", err)
+		writeError(w, http.StatusBadRequest, "bad_signature", "signature verification failed")
+		return
+	}
+	notif := container.GetEventNotification()
+	acctID := ""
+	if u, ok := container.(*stripe.UnknownEventNotification); ok && u.RelatedObject != nil &&
+		strings.HasPrefix(u.RelatedObject.ID, "acct_") {
+		acctID = u.RelatedObject.ID
+	} else if notif != nil && notif.Context != nil {
+		for _, seg := range notif.Context.Segments {
+			if strings.HasPrefix(seg, "acct_") {
+				acctID = seg
+			}
+		}
+	}
+	if acctID != "" {
+		if pa, ok, _ := s.store.PayoutAccountByStripe(context.WithoutCancel(r.Context()), acctID); ok {
+			ready, reqs, e := s.v2AccountReady(context.WithoutCancel(r.Context()), acctID)
+			if e == nil {
+				pa.Status = "pending"
+				if ready {
+					pa.Status = "enabled"
+				}
+				_ = s.store.UpsertPayoutAccount(context.WithoutCancel(r.Context()), pa)
+				s.log.Info("payout account updated via webhook",
+					"account", acctID, "status", pa.Status, "requirements", reqs,
+					"event", notif.Type)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"received":true}`))
 }

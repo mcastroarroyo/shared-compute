@@ -83,6 +83,9 @@ type PayoutRecord struct {
 	AmountMicros   int64
 	StripeTransfer string
 	State          string
+	// RemainderMicros is the sub-cent dust that couldn't be transferred; it is
+	// re-accrued so it carries forward to the next payout.
+	RemainderMicros int64
 }
 
 // EarningRow aggregates provider_earnings per provider for the admin view.
@@ -156,6 +159,8 @@ type Store interface {
 	UpsertPayoutAccount(ctx context.Context, a PayoutAccount) error
 	// GetPayoutAccount returns the linked account for a provider identity, if any.
 	GetPayoutAccount(ctx context.Context, staticPK string) (PayoutAccount, bool, error)
+	// PayoutAccountByStripe reverse-looks-up by Stripe account id (webhook path).
+	PayoutAccountByStripe(ctx context.Context, stripeAccount string) (PayoutAccount, bool, error)
 	// AccruedByProvider sums unpaid provider_earnings per payout identity.
 	AccruedByProvider(ctx context.Context) ([]ProviderAccrual, error)
 	// RecordPayoutAndSettle inserts a payout row and marks that identity's accrued

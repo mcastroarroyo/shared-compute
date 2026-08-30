@@ -80,6 +80,17 @@ func (p *PG) GetPayoutAccount(ctx context.Context, staticPK string) (PayoutAccou
 	return a, err == nil, err
 }
 
+func (p *PG) PayoutAccountByStripe(ctx context.Context, stripeAccount string) (PayoutAccount, bool, error) {
+	var a PayoutAccount
+	err := p.pool.QueryRow(ctx,
+		`SELECT static_pk, stripe_account, status FROM provider_payout_accounts WHERE stripe_account=$1`,
+		stripeAccount).Scan(&a.StaticPK, &a.StripeAccount, &a.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return a, false, nil
+	}
+	return a, err == nil, err
+}
+
 func (p *PG) AccruedByProvider(ctx context.Context) ([]ProviderAccrual, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT static_pk, count(*), coalesce(sum(provider_micros),0)
@@ -124,6 +135,15 @@ func (p *PG) RecordPayoutAndSettle(ctx context.Context, po PayoutRecord) (int64,
 			UPDATE provider_earnings SET state='paid', payout_id=$1
 			WHERE static_pk=$2 AND state='accrued'`, id, po.StaticPK); err != nil {
 			return 0, err
+		}
+		if po.RemainderMicros > 0 {
+			// Re-accrue the sub-cent dust so it carries to the next payout.
+			if _, err := tx.Exec(ct, `
+				INSERT INTO provider_earnings
+				  (static_pk, model_class, tier, gross_micros, provider_micros, state)
+				VALUES ($1,'','carryforward',0,$2,'accrued')`, po.StaticPK, po.RemainderMicros); err != nil {
+				return 0, err
+			}
 		}
 	}
 	return id, tx.Commit(ct)

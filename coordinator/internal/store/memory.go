@@ -217,6 +217,17 @@ func (m *Mem) GetPayoutAccount(_ context.Context, staticPK string) (PayoutAccoun
 	return a, ok, nil
 }
 
+func (m *Mem) PayoutAccountByStripe(_ context.Context, stripeAccount string) (PayoutAccount, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, a := range m.payoutAccts {
+		if a.StripeAccount == stripeAccount {
+			return a, true, nil
+		}
+	}
+	return PayoutAccount{}, false, nil
+}
+
 func (m *Mem) AccruedByProvider(_ context.Context) ([]ProviderAccrual, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -236,7 +247,7 @@ func (m *Mem) RecordPayoutAndSettle(_ context.Context, po PayoutRecord) (int64, 
 	if po.State == "created" {
 		if a := m.accrued[po.StaticPK]; a != nil {
 			a.Jobs = 0
-			a.OwedMicros = 0
+			a.OwedMicros = po.RemainderMicros // carry the dust forward
 		}
 	}
 	return m.nextPayout, nil

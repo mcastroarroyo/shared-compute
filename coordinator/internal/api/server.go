@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /billing/balance", instrument("billing_balance", s.withAuth(s.handleBalance)))
 	mux.Handle("POST /billing/checkout", instrument("billing_checkout", s.withAuth(s.handleCheckout)))
 	mux.Handle("POST /billing/webhook", instrument("billing_webhook", http.HandlerFunc(s.handleStripeWebhook)))
+	mux.Handle("POST /payouts/webhook", instrument("payouts_webhook", http.HandlerFunc(s.handlePayoutWebhook)))
 
 	// Sample Stripe Connect integration (onboard, products, storefront, charges).
 	if h, err := connectdemo.New(s.cfg.StripeSecretKey, s.cfg.StripeConnectWebhookSecret,
