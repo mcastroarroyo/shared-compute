@@ -57,7 +57,12 @@ impl EventSink for LogSink {
                 info!(%provider_id, %trust_tier, "registered")
             }
             ProviderEvent::JobStarted { job_id } => info!(%job_id, "job started"),
-            ProviderEvent::JobFinished { job_id, ok, completion_tokens, decode_tps } => {
+            ProviderEvent::JobFinished {
+                job_id,
+                ok,
+                completion_tokens,
+                decode_tps,
+            } => {
                 info!(%job_id, ok, completion_tokens, decode_tps, "job finished")
             }
             ProviderEvent::Disconnected { reason } => info!(%reason, "disconnected"),

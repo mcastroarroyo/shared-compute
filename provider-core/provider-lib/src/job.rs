@@ -46,7 +46,11 @@ pub struct JobOutcome {
 
 impl JobOutcome {
     fn failed() -> Self {
-        Self { ok: false, completion_tokens: 0, decode_tps: 0.0 }
+        Self {
+            ok: false,
+            completion_tokens: 0,
+            decode_tps: 0.0,
+        }
     }
 }
 
@@ -158,7 +162,11 @@ pub async fn handle_job(
                     decode_tps: Some(c.decode_tps),
                 },
             );
-            JobOutcome { ok: true, completion_tokens, decode_tps }
+            JobOutcome {
+                ok: true,
+                completion_tokens,
+                decode_tps,
+            }
         }
         Err(e) => {
             let code = match e {

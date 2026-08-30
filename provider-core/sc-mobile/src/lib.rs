@@ -262,7 +262,10 @@ fn init_logging() {
             use tracing_subscriber::layer::SubscriberExt;
             use tracing_subscriber::util::SubscriberInitExt;
             if let Ok(logcat) = tracing_android::layer("ayni-provider") {
-                let _ = tracing_subscriber::registry().with(filter).with(logcat).try_init();
+                let _ = tracing_subscriber::registry()
+                    .with(filter)
+                    .with(logcat)
+                    .try_init();
                 return;
             }
         }
