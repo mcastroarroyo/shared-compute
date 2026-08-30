@@ -108,6 +108,11 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    // rustls 0.23 needs a process-wide crypto provider selected explicitly.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
+
     let args = Args::parse();
 
     let id_path = args

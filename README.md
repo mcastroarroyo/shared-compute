@@ -17,9 +17,9 @@ Pre-alpha. Building milestone by milestone — see
 | Milestone | Scope | State |
 |---|---|---|
 | M0 | Repo, protocol contract, toolchains, CI, local stack | **done** |
-| M1 | First end-to-end encrypted inference on localhost | **done (mock backend)** — real llama.cpp next |
-| M2 | Coordinator online (Fly.io) with TLS | — |
-| M3 | Model registry (Cloudflare R2) + macOS/Linux provider packaging | — |
+| M1 | First end-to-end encrypted inference on localhost | **done** (mock + real llama.cpp/Metal) |
+| M2 | Coordinator online (Fly.io) with TLS | **live** — `ayni-coordinator.fly.dev`; custom domain cert pending DNS |
+| M3 | Model registry (Cloudflare R2) + macOS/Linux provider packaging | next |
 | M4 | Scheduler, trust tiers, metering, web console | — |
 | M5 | Android provider app | — |
 | M6 | Android acceleration + hardware attestation (Tier 1) | — |
