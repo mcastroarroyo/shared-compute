@@ -20,8 +20,9 @@ export CARGO="${CARGO:-/opt/homebrew/opt/rustup/bin/cargo}"
 export RUSTC="${RUSTC:-/opt/homebrew/opt/rustup/bin/rustc}"
 
 : "${ANDROID_NDK_HOME:=$(ls -d /opt/homebrew/share/android-commandlinetools/ndk/* 2>/dev/null | sort -V | tail -1)}"
-export ANDROID_NDK_HOME
 [ -d "$ANDROID_NDK_HOME" ] || { echo "set ANDROID_NDK_HOME"; exit 1; }
+# llama-cpp-sys-2's build.rs probes ANDROID_NDK / NDK_ROOT / ANDROID_NDK_ROOT, not *_HOME.
+export ANDROID_NDK_HOME ANDROID_NDK="$ANDROID_NDK_HOME" NDK_ROOT="$ANDROID_NDK_HOME" ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 echo "NDK: $ANDROID_NDK_HOME"
 
 FEATURES="${FEATURES:-}"

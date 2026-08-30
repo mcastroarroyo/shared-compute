@@ -7,7 +7,7 @@ data class ProviderSettings(
     val coordinatorUrl: String = "wss://api.ayni-ai.com/ws/provider",
     val registrationToken: String = "",
     val model: String = "qwen2.5-0.5b-instruct-q4_k_m",
-    val backend: String = "mock", // "mock" until the llama Android backend ships
+    val backend: String = "llama", // "mock" for a no-download connectivity check
     val manifestUrl: String = "https://models.ayni-ai.com",
     val registryPubkey: String = "p7UUs6aCFebGUfSvFV5Wczh7kYBCEW2tDRO+dV0IpDM=",
     val maxContext: Int = 8192,
@@ -22,18 +22,22 @@ data class ProviderSettings(
 class ConfigStore(context: Context) {
     private val sp = context.getSharedPreferences("provider", Context.MODE_PRIVATE)
 
-    fun load() = ProviderSettings(
-        coordinatorUrl = sp.getString("url", null) ?: ProviderSettings().coordinatorUrl,
+    fun load(): ProviderSettings {
+        val d = ProviderSettings()
+        fun str(key: String, default: String) = sp.getString(key, null)?.ifBlank { null } ?: default
+        return ProviderSettings(
+        coordinatorUrl = str("url", d.coordinatorUrl),
         registrationToken = sp.getString("token", "") ?: "",
-        model = sp.getString("model", null) ?: ProviderSettings().model,
-        backend = sp.getString("backend", null) ?: ProviderSettings().backend,
-        manifestUrl = sp.getString("manifestUrl", null) ?: ProviderSettings().manifestUrl,
-        registryPubkey = sp.getString("pubkey", null) ?: ProviderSettings().registryPubkey,
-        maxContext = sp.getInt("maxCtx", ProviderSettings().maxContext),
+        model = str("model", d.model),
+        backend = str("backend", d.backend),
+        manifestUrl = str("manifestUrl", d.manifestUrl),
+        registryPubkey = str("pubkey", d.registryPubkey),
+        maxContext = sp.getInt("maxCtx", d.maxContext),
         onlyWhenCharging = sp.getBoolean("charging", true),
         onlyOnWifi = sp.getBoolean("wifi", true),
         minBatteryPct = sp.getInt("minBat", 30),
-    )
+        )
+    }
 
     fun save(s: ProviderSettings) = sp.edit().apply {
         putString("url", s.coordinatorUrl)
