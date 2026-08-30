@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -79,6 +80,7 @@ func (s *Server) adminSetKey(disabled bool) http.HandlerFunc {
 
 type providerView struct {
 	ID            string   `json:"id"`
+	StaticPK      string   `json:"static_pk"` // base64 X25519 — the payout identity
 	Platform      string   `json:"platform"`
 	Arch          string   `json:"arch"`
 	Backend       string   `json:"backend"`
@@ -96,7 +98,9 @@ func (s *Server) adminProviders(w http.ResponseWriter, _ *http.Request) {
 	for _, p := range s.reg.Snapshot() {
 		active, _ := p.Load()
 		out = append(out, providerView{
-			ID: p.ID, Platform: p.Capabilities.Platform, Arch: p.Capabilities.Arch,
+			ID:       p.ID,
+			StaticPK: base64.StdEncoding.EncodeToString(p.StaticPK[:]),
+			Platform: p.Capabilities.Platform, Arch: p.Capabilities.Arch,
 			Backend: p.Capabilities.Backend, HardwareClass: p.Capabilities.HardwareClass,
 			TrustTier: p.TrustTier, Models: p.Capabilities.Models, ActiveJobs: active,
 			RAMMB: p.Capabilities.RAMMB, ThermalState: p.Telemetry.ThermalState,
