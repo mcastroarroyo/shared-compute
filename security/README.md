@@ -22,6 +22,8 @@ python -m ayni_security.harness
 ```
 
 The harness is offline by default and sends no traffic to live Ayni infrastructure.
+GitHub dependency review should be enabled as an additional gate once Dependency Graph /
+Advanced Security is available for the private repository.
 
 ## Security invariants encoded here
 
