@@ -43,6 +43,8 @@ Advanced Security is available for the private repository.
   to two seats.
 - A signed result receipt is bound to its job, lease, device, workload, nonce, expiry,
   result hash, and output ceiling before it can become a payable event.
+- Public Council records use a narrower, hash-linked disclosure schema that excludes
+  prompts, chain-of-thought, credentials, customer content, and exploit reproductions.
 
 ## Live model adapters
 
@@ -55,4 +57,5 @@ independence, and Ayni's qualification suite—not rank alone.
 
 See `OWNERSHIP.md`, `constitution/AYNI_CONSTITUTION.md`,
 `threat-model/SECURITY_V0.1.md`, and
-`../docs/AGENT-COORDINATION-SECURITY-COUNCIL.md`.
+`../docs/AGENT-COORDINATION-SECURITY-COUNCIL.md`. The Council UX and public
+disclosure contract is in `../docs/AYNI-COUNCIL-EXPERIENCE.md`.
