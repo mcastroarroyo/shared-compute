@@ -73,6 +73,10 @@ pub enum ProviderEvent {
     JobFinished {
         job_id: String,
         ok: bool,
+        /// Completion tokens this node produced (0 on failure).
+        completion_tokens: u32,
+        /// Decode throughput for this job, tokens/sec (0 on failure).
+        decode_tps: f32,
     },
     Disconnected {
         reason: String,
@@ -327,9 +331,14 @@ pub async fn run(
                             active.clone(), jobs.clone(), sink.clone(),
                         );
                         tokio::spawn(async move {
-                            let ok = job::handle_job(jr, identity, backend, tx2, token, active2).await;
+                            let out = job::handle_job(jr, identity, backend, tx2, token, active2).await;
                             jobs2.lock().await.remove(&job_id);
-                            sink2.on_event(ProviderEvent::JobFinished { job_id, ok });
+                            sink2.on_event(ProviderEvent::JobFinished {
+                                job_id,
+                                ok: out.ok,
+                                completion_tokens: out.completion_tokens,
+                                decode_tps: out.decode_tps,
+                            });
                         });
                     }
                     proto::msg_type::CANCEL => {

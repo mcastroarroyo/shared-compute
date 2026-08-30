@@ -37,6 +37,19 @@ fn send<T: serde::Serialize>(tx: &UnboundedSender<WsMessage>, payload: &T) {
     }
 }
 
+/// What a finished job produced, surfaced to the [`crate::EventSink`] for UI/metering.
+pub struct JobOutcome {
+    pub ok: bool,
+    pub completion_tokens: u32,
+    pub decode_tps: f32,
+}
+
+impl JobOutcome {
+    fn failed() -> Self {
+        Self { ok: false, completion_tokens: 0, decode_tps: 0.0 }
+    }
+}
+
 fn job_error(tx: &UnboundedSender<WsMessage>, job_id: &str, code: &str) {
     send(
         tx,
@@ -56,7 +69,7 @@ pub async fn handle_job(
     tx: UnboundedSender<WsMessage>,
     cancel: CancellationToken,
     active: Arc<AtomicU32>,
-) -> bool {
+) -> JobOutcome {
     active.fetch_add(1, Ordering::Relaxed);
     let _guard = ActiveGuard(active);
     let job_id = jr.job_id.clone();
@@ -65,7 +78,7 @@ pub async fn handle_job(
         Ok(k) => k,
         Err(_) => {
             job_error(&tx, &job_id, "decrypt");
-            return false;
+            return JobOutcome::failed();
         }
     };
     let plaintext = match box_open(&jr.sealed, &epk, &identity.secret) {
@@ -73,20 +86,20 @@ pub async fn handle_job(
         Err(_) => {
             warn!(job_id = %job_id, "sealed request failed to open");
             job_error(&tx, &job_id, "decrypt");
-            return false;
+            return JobOutcome::failed();
         }
     };
     let pt: proto::JobRequestPlaintext = match serde_json::from_slice(&plaintext) {
         Ok(p) => p,
         Err(_) => {
             job_error(&tx, &job_id, "internal");
-            return false;
+            return JobOutcome::failed();
         }
     };
 
     if !backend.has_model(&pt.model) {
         job_error(&tx, &job_id, "model-missing");
-        return false;
+        return JobOutcome::failed();
     }
 
     let req = InferenceRequest {
@@ -131,6 +144,8 @@ pub async fn handle_job(
     match result {
         Ok(c) => {
             info!(job_id = %job_id, completion_tokens = c.usage.completion_tokens, duration_ms, "job done");
+            let completion_tokens = c.usage.completion_tokens;
+            let decode_tps = c.decode_tps as f32;
             send(
                 &tx,
                 &proto::JobDone {
@@ -143,6 +158,7 @@ pub async fn handle_job(
                     decode_tps: Some(c.decode_tps),
                 },
             );
+            JobOutcome { ok: true, completion_tokens, decode_tps }
         }
         Err(e) => {
             let code = match e {
@@ -153,8 +169,7 @@ pub async fn handle_job(
             };
             warn!(job_id = %job_id, code, "job failed");
             job_error(&tx, &job_id, code);
-            return false;
+            JobOutcome::failed()
         }
     }
-    true
 }

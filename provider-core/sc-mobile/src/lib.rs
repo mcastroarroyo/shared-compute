@@ -29,6 +29,8 @@ pub enum SpEvent {
     JobFinished {
         job_id: String,
         ok: bool,
+        completion_tokens: u32,
+        decode_tps: f32,
     },
     Disconnected {
         reason: String,
@@ -49,7 +51,17 @@ fn map_event(ev: ProviderEvent) -> SpEvent {
             trust_tier,
         },
         ProviderEvent::JobStarted { job_id } => SpEvent::JobStarted { job_id },
-        ProviderEvent::JobFinished { job_id, ok } => SpEvent::JobFinished { job_id, ok },
+        ProviderEvent::JobFinished {
+            job_id,
+            ok,
+            completion_tokens,
+            decode_tps,
+        } => SpEvent::JobFinished {
+            job_id,
+            ok,
+            completion_tokens,
+            decode_tps,
+        },
         ProviderEvent::Disconnected { reason } => SpEvent::Disconnected { reason },
         ProviderEvent::Error { message } => SpEvent::Error { message },
     }

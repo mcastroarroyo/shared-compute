@@ -16,6 +16,13 @@ import uniffi.sc_mobile.SpEvent
 object ProviderController {
     enum class Phase { STOPPED, BLOCKED, CONNECTING, REGISTERED, ERROR }
 
+    /**
+     * Estimated payout rate for community-tier output tokens, USD per 1M tokens.
+     * The coordinator's metering is the source of truth for real payouts (M9);
+     * this is a local, clearly-labelled estimate so the operator sees value accruing.
+     */
+    const val USD_PER_MTOK = 0.15
+
     data class Status(
         val phase: Phase = Phase.STOPPED,
         val detail: String = "",
@@ -23,7 +30,17 @@ object ProviderController {
         val trustTier: String = "",
         val jobsDone: Int = 0,
         val jobsActive: Int = 0,
-    )
+        /** Cumulative completion tokens this node has served this session. */
+        val tokensServed: Long = 0,
+        /** Decode throughput of the most recent job, tokens/sec. */
+        val lastTps: Double = 0.0,
+        /** Best decode throughput seen this session, tokens/sec. */
+        val peakTps: Double = 0.0,
+        /** Wall-clock millis when the provider last reached CONNECTING. */
+        val startedAtMs: Long = 0,
+    ) {
+        val earningsUsd: Double get() = tokensServed / 1_000_000.0 * USD_PER_MTOK
+    }
 
     private val _status = MutableStateFlow(Status())
     val status: StateFlow<Status> = _status.asStateFlow()
@@ -41,10 +58,17 @@ object ProviderController {
                 )
                 is SpEvent.JobStarted ->
                     _status.value.copy(jobsActive = _status.value.jobsActive + 1)
-                is SpEvent.JobFinished -> _status.value.copy(
-                    jobsActive = (_status.value.jobsActive - 1).coerceAtLeast(0),
-                    jobsDone = _status.value.jobsDone + 1,
-                )
+                is SpEvent.JobFinished -> {
+                    val tps = if (event.ok && event.decodeTps > 0f)
+                        event.decodeTps.toDouble() else _status.value.lastTps
+                    _status.value.copy(
+                        jobsActive = (_status.value.jobsActive - 1).coerceAtLeast(0),
+                        jobsDone = _status.value.jobsDone + 1,
+                        tokensServed = _status.value.tokensServed + event.completionTokens.toLong(),
+                        lastTps = tps,
+                        peakTps = maxOf(_status.value.peakTps, tps),
+                    )
+                }
                 is SpEvent.Disconnected ->
                     _status.value.copy(phase = Phase.STOPPED, detail = event.reason)
                 is SpEvent.Error ->
@@ -57,7 +81,11 @@ object ProviderController {
     fun start(ctx: Context, s: ProviderSettings) {
         if (native?.isRunning() == true) return
         if (native == null) native = Provider()
-        _status.value = Status(Phase.CONNECTING)
+        _status.value = _status.value.copy(
+            phase = Phase.CONNECTING, detail = "",
+            startedAtMs = if (_status.value.startedAtMs == 0L)
+                System.currentTimeMillis() else _status.value.startedAtMs,
+        )
         val cfg = MobileConfig(
             coordinatorUrl = s.coordinatorUrl,
             registrationToken = s.registrationToken,
@@ -75,7 +103,10 @@ object ProviderController {
     @Synchronized
     fun stop(reason: String = "stopped") {
         native?.stop()
-        _status.value = Status(Phase.STOPPED, reason)
+        // Keep session totals; just reset the live phase.
+        _status.value = _status.value.copy(
+            phase = Phase.STOPPED, detail = reason, jobsActive = 0, lastTps = 0.0,
+        )
     }
 
     fun setBlocked(reason: String) {
