@@ -78,6 +78,18 @@ func batteryHeadroom(p *registry.Provider) int {
 
 // Pick returns the best provider for req, or an error explaining why none matched.
 func Pick(reg *registry.Registry, req Requirements) (*registry.Provider, error) {
+	candidates, err := Eligible(reg, req)
+	if err != nil {
+		return nil, err
+	}
+	return candidates[0], nil
+}
+
+// Eligible returns every connected provider that can serve req, best-ranked first
+// (least loaded, then stronger tier, cooler, more battery/RAM headroom). Batch
+// fan-out uses the whole list; single jobs take the head. The error semantics
+// match Pick: ErrNoProvider / ErrTierUnmet / ErrCapsUnmet.
+func Eligible(reg *registry.Registry, req Requirements) ([]*registry.Provider, error) {
 	wantTier := tierRank(req.MinTier)
 	wantClass := classRank(req.HWClass)
 
@@ -134,5 +146,5 @@ func Pick(reg *registry.Registry, req Requirements) (*registry.Provider, error) 
 		}
 		return a.Telemetry.MemAvailableMB > b.Telemetry.MemAvailableMB
 	})
-	return candidates[0], nil
+	return candidates, nil
 }

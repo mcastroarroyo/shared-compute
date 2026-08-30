@@ -50,9 +50,13 @@ type Result struct {
 // ErrProviderGone means the chosen provider dropped mid-job.
 var ErrProviderGone = errors.New("provider disconnected during job")
 
-// Execute runs req to completion, invoking onDelta for each decrypted token chunk.
-// It blocks until the job finishes, errors, or ctx is cancelled (client disconnect),
-// in which case a cancel is sent to the provider.
+// ErrDeadline means the job ran past Cfg.JobDeadlineMS.
+var ErrDeadline = errors.New("job exceeded deadline")
+
+// Execute picks the best provider for req and runs it to completion, invoking
+// onDelta for each decrypted token chunk. It blocks until the job finishes,
+// errors, or ctx is cancelled (client disconnect), in which case a cancel is
+// sent to the provider.
 func Execute(ctx context.Context, d Deps, req Request, onDelta func(string) error) (*Result, error) {
 	prov, err := scheduler.Pick(d.Reg, scheduler.Requirements{
 		Model:      req.Model,
@@ -63,7 +67,12 @@ func Execute(ctx context.Context, d Deps, req Request, onDelta func(string) erro
 	if err != nil {
 		return nil, err
 	}
+	return ExecuteOn(ctx, d, prov, req, onDelta)
+}
 
+// ExecuteOn is Execute against an already-chosen provider. Batch fan-out uses it
+// to place each sub-job itself instead of re-running the scheduler per item.
+func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request, onDelta func(string) error) (*Result, error) {
 	ephem, err := crypto.GenerateKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("ephemeral key: %w", err)
@@ -117,7 +126,7 @@ func Execute(ctx context.Context, d Deps, req Request, onDelta func(string) erro
 
 		case <-jobDeadline.C:
 			_ = prov.Send(protocol.Cancel{Type: protocol.TypeCancel, JobID: jobID, Reason: "deadline"})
-			return nil, fmt.Errorf("job %s exceeded deadline", jobID)
+			return nil, fmt.Errorf("%w: job %s", ErrDeadline, jobID)
 
 		case ev, ok := <-ch:
 			if !ok {
@@ -165,5 +174,27 @@ func Execute(ctx context.Context, d Deps, req Request, onDelta func(string) erro
 				return nil, fmt.Errorf("provider job error: %s", je.Code)
 			}
 		}
+	}
+}
+
+// ErrCode maps an Execute/ExecuteOn error to a stable short code and a
+// human-readable message. Shared by the chat and batch handlers so a failure
+// reads the same whichever surface produced it.
+func ErrCode(err error) (code, msg string) {
+	switch {
+	case errors.Is(err, scheduler.ErrNoProvider):
+		return "no_provider", "no provider is currently serving this model"
+	case errors.Is(err, scheduler.ErrTierUnmet):
+		return "trust_tier_unmet", "no connected provider meets the requested trust level"
+	case errors.Is(err, scheduler.ErrCapsUnmet):
+		return "capabilities_unmet", "no connected provider meets the model's resource requirements"
+	case errors.Is(err, ErrProviderGone):
+		return "provider_gone", "the assigned provider disconnected"
+	case errors.Is(err, ErrDeadline):
+		return "deadline", "the job exceeded the coordinator deadline"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "client_closed", "the request was cancelled"
+	default:
+		return "internal", "the request could not be completed"
 	}
 }

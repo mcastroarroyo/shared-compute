@@ -105,6 +105,37 @@ func TestPickThermalTiebreak(t *testing.T) {
 	}
 }
 
+func TestEligibleReturnsAllRankedAndFiltered(t *testing.T) {
+	reg := registry.New()
+	reg.Add(mkProvider("serves-other", "other", "community", "SMALL", 9000, 8192))
+	busy := mkProvider("busy", "m", "community", "SMALL", 9000, 8192)
+	busy.AcquireSlot()
+	reg.Add(busy)
+	reg.Add(mkProvider("idle", "m", "community", "SMALL", 1000, 8192))
+	drain := mkProvider("drain", "m", "community", "SMALL", 9000, 8192)
+	drain.SetDraining(true)
+	reg.Add(drain)
+
+	got, err := Eligible(reg, Requirements{Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 eligible (idle, busy), got %d", len(got))
+	}
+	if got[0].ID != "idle" || got[1].ID != "busy" {
+		t.Fatalf("want [idle busy] by least-loaded, got [%s %s]", got[0].ID, got[1].ID)
+	}
+}
+
+func TestEligibleNoProvider(t *testing.T) {
+	reg := registry.New()
+	reg.Add(mkProvider("a", "m", "community", "SMALL", 1000, 8192))
+	if _, err := Eligible(reg, Requirements{Model: "nope"}); err != ErrNoProvider {
+		t.Fatalf("want ErrNoProvider, got %v", err)
+	}
+}
+
 func TestPickSkipsDraining(t *testing.T) {
 	reg := registry.New()
 	d := mkProvider("draining", "m", "community", "SMALL", 9000, 8192)

@@ -27,8 +27,13 @@ Tier 0 is built fully now. Every trust seam is a trait/interface so 1 and 2 slot
 | M1 | done (mock + real llama.cpp/Metal) | localhost |
 | M2 | done | `https://api.ayni-ai.com` (Fly.io + Postgres, Let's Encrypt) |
 | M3 | done | `https://models.ayni-ai.com` (R2, signed manifest, verified download) |
-| M4 | coordinator live (catalog `/v1/models`, capability scheduler, rate limits, admin API); console built, Pages deploy pending | `api.ayni-ai.com` |
-| M5–M9 | not started | — |
+| M4 | done — catalog `/v1/models`, capability scheduler, rate limits, admin API, console on CF Pages | `api.ayni-ai.com` · `ayni-console.pages.dev` |
+| M5 | done — Android provider app, encrypted policy-gated streamed inference | Play internal testing |
+| M6 | done — Android StrongBox key attestation → `device_attested` | live |
+| M9 | partial — Stripe billing + V2 Connect payouts (money loop verified end to end) | live |
+| M10.1 | done — node self-benchmark + ACU capability registry (`GET /admin/nodes`) | live |
+| M10.2 | done — `POST /v1/batch` fan-out / aggregate execution primitive | live |
+| M7–M8, M10.3–M10.5 | not started | — |
 
 ## Milestones
 
@@ -89,6 +94,32 @@ Multi-region coordinators + global LB, Postgres HA, Redis. Stripe Connect provid
 runbooks. Threat model, dependency scanning, signed releases, external pen test, IR plan,
 lawyer-reviewed ToS/privacy, abuse policy, GDPR/CCPA flows, SOC 2 readiness. **Done when:**
 audited multi-region production network with paid providers.
+
+### M10 — Marketplace v0.1 *(no new accounts)*
+Reframe from "rent a phone for X hours" to an intelligent hybrid compute marketplace:
+"tell Ayni what to run → one aggregated quote → it executes, verifies, pays". Substeps:
+
+- **M10.1 — Node capability registry + benchmarking (done).** Each node self-benchmarks
+  (`provider-lib` `benchmark.rs`): memory bandwidth, a short prefill run, and a ~400-token
+  sustained run split first-half/second-half to expose thermal decay. Coordinator turns the
+  `benchmark_report` into an **Ayni Compute Unit (ACU)** — normalized from *measured*
+  sustained throughput, ~1.0 for a mid-range phone (`internal/capability`). Stored in
+  `node_capabilities`; surfaced at `GET /admin/nodes` and the console **Nodes** page.
+- **M10.2 — Batch fan-out primitive (done).** `POST /v1/batch`: N independent chat items
+  for one model, fanned across every eligible provider (`scheduler.Eligible`), run in
+  parallel with a bounded worker pool, reassembled in submission order, metered per
+  sub-job. Prefers higher-ACU nodes; degrades to fewer providers; per-item errors are
+  reported, not fatal (`internal/batch`).
+- **M10.3 — Workload estimator + marketplace quote.** `POST /v1/workloads`: estimate token
+  volume, discover eligible nodes, predict wall time from ACU, compute provider cost + Ayni
+  margin, return one customer quote; on accept the scheduler runs it via the M10.2
+  primitive.
+- **M10.4 — Website reframe.** Hero "the world's unused compute, on demand"; interactive
+  workload box → live quote.
+- **M10.5 — Spot tier.** Interruptible, cheapest, best-effort completion time.
+
+**Done when:** submit one Llama workload → Ayni quotes it → accept → it fans out across
+real phones → results returned in order → providers accrue earnings.
 
 ## Account checklist
 
