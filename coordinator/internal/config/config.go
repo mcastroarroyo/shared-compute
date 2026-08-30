@@ -27,6 +27,8 @@ type Config struct {
 	DatabaseURL string
 	// RatePerMin is the default per-API-key request budget (0 disables limiting).
 	RatePerMin int
+	// AdminToken gates /admin/* (key management, provider list, usage). Empty = disabled.
+	AdminToken string
 }
 
 func Load() (Config, error) {
@@ -40,6 +42,7 @@ func Load() (Config, error) {
 		JobDeadlineMS:              int64(getenvInt("SC_JOB_DEADLINE_MS", 120000)),
 		DatabaseURL:                getenv("SC_DATABASE_URL", ""),
 		RatePerMin:                 getenvInt("SC_RATE_PER_MIN", 120),
+		AdminToken:                 getenv("SC_ADMIN_TOKEN", ""),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

@@ -53,6 +53,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
+	s.mountAdmin(mux)
+	if s.cfg.AdminToken != "" {
+		mux.HandleFunc("OPTIONS /admin/", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Admin-Token, Content-Type")
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
 	return logRequests(s.log, mux)
 }
 

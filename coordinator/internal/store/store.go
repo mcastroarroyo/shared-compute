@@ -32,6 +32,23 @@ type ProviderRecord struct {
 	LastSeen   time.Time
 }
 
+// KeyInfo describes a consumer API key without revealing its secret.
+type KeyInfo struct {
+	ID        string    `json:"id"`
+	Label     string    `json:"label"`
+	Disabled  bool      `json:"disabled"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// UsageRow is an aggregate of usage_events for the console dashboard.
+type UsageRow struct {
+	KeyID            string `json:"key_id"`
+	Model            string `json:"model"`
+	Requests         int    `json:"requests"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+}
+
 // Store is the coordinator's persistence boundary.
 type Store interface {
 	// Migrate applies any pending schema migrations. No-op for the memory store.
@@ -48,6 +65,18 @@ type Store interface {
 
 	// RecordUsage appends a usage event. Best-effort; a failure must not fail the request.
 	RecordUsage(ctx context.Context, ev UsageEvent) error
+
+	// --- admin / console ---
+
+	// CreateConsumerKey generates a new key, stores its hash, and returns (id, rawKey).
+	// The raw key is shown once.
+	CreateConsumerKey(ctx context.Context, label string) (id, rawKey string, err error)
+	// ListConsumerKeys returns all keys (env bootstrap keys are not listed).
+	ListConsumerKeys(ctx context.Context) ([]KeyInfo, error)
+	// SetConsumerKeyDisabled enables/disables a key by id.
+	SetConsumerKeyDisabled(ctx context.Context, id string, disabled bool) error
+	// UsageSince aggregates usage_events grouped by key + model since t.
+	UsageSince(ctx context.Context, t time.Time) ([]UsageRow, error)
 
 	Close()
 }

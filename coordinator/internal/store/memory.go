@@ -2,20 +2,25 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Mem is the env-configured, non-durable store. Keys and tokens come from config; usage
-// events are counted but not retained.
+// events are counted but not retained. Keys created at runtime live only until restart.
 type Mem struct {
-	keys   map[string]string // key -> stable id (sha256 prefix)
-	tokens map[string]struct{}
-
 	mu        sync.Mutex
+	keys      map[string]string // raw key -> stable id
+	keyInfo   map[string]KeyInfo
+	tokens    map[string]struct{}
+	rawByID   map[string]string // id -> raw key (Mem only, so disable works)
 	providers map[string]ProviderRecord
+	usageRows []UsageRow
 	usage     atomic.Int64
 }
 
@@ -29,7 +34,13 @@ func NewMem(consumerKeys, providerTokens map[string]struct{}) *Mem {
 	for t := range providerTokens {
 		toks[t] = struct{}{}
 	}
-	return &Mem{keys: keys, tokens: toks, providers: map[string]ProviderRecord{}}
+	return &Mem{
+		keys:      keys,
+		keyInfo:   map[string]KeyInfo{},
+		tokens:    toks,
+		rawByID:   map[string]string{},
+		providers: map[string]ProviderRecord{},
+	}
 }
 
 func keyID(k string) string {
@@ -40,8 +51,63 @@ func keyID(k string) string {
 func (m *Mem) Migrate(context.Context) error { return nil }
 
 func (m *Mem) ValidateConsumerKey(_ context.Context, key string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	id, ok := m.keys[key]
-	return id, ok
+	if !ok {
+		return "", false
+	}
+	if info, has := m.keyInfo[id]; has && info.Disabled {
+		return "", false
+	}
+	return id, true
+}
+
+func randToken(prefix string) string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return prefix + hex.EncodeToString(b)
+}
+
+func (m *Mem) CreateConsumerKey(_ context.Context, label string) (string, string, error) {
+	raw := randToken("sc_live_")
+	id := keyID(raw)
+	m.mu.Lock()
+	m.keys[raw] = id
+	m.rawByID[id] = raw
+	m.keyInfo[id] = KeyInfo{ID: id, Label: label, CreatedAt: time.Now()}
+	m.mu.Unlock()
+	return id, raw, nil
+}
+
+func (m *Mem) ListConsumerKeys(_ context.Context) ([]KeyInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]KeyInfo, 0, len(m.keyInfo))
+	for _, v := range m.keyInfo {
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+func (m *Mem) SetConsumerKeyDisabled(_ context.Context, id string, disabled bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	info, ok := m.keyInfo[id]
+	if !ok {
+		return fmt.Errorf("no such key: %s", id)
+	}
+	info.Disabled = disabled
+	m.keyInfo[id] = info
+	return nil
+}
+
+func (m *Mem) UsageSince(_ context.Context, _ time.Time) ([]UsageRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]UsageRow, len(m.usageRows))
+	copy(out, m.usageRows)
+	return out, nil
 }
 
 func (m *Mem) ValidateProviderToken(_ context.Context, token string) bool {
@@ -56,8 +122,22 @@ func (m *Mem) UpsertProvider(_ context.Context, p ProviderRecord) error {
 	return nil
 }
 
-func (m *Mem) RecordUsage(_ context.Context, _ UsageEvent) error {
+func (m *Mem) RecordUsage(_ context.Context, ev UsageEvent) error {
 	m.usage.Add(1)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.usageRows {
+		if m.usageRows[i].KeyID == ev.KeyID && m.usageRows[i].Model == ev.Model {
+			m.usageRows[i].Requests++
+			m.usageRows[i].PromptTokens += int64(ev.PromptTokens)
+			m.usageRows[i].CompletionTokens += int64(ev.CompletionTokens)
+			return nil
+		}
+	}
+	m.usageRows = append(m.usageRows, UsageRow{
+		KeyID: ev.KeyID, Model: ev.Model, Requests: 1,
+		PromptTokens: int64(ev.PromptTokens), CompletionTokens: int64(ev.CompletionTokens),
+	})
 	return nil
 }
 

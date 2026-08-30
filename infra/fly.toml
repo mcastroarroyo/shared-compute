@@ -16,8 +16,10 @@ primary_region = "iad"
 [env]
   SC_HTTP_ADDR = ":8080"
   SC_HEARTBEAT_SECONDS = "15"
-  # Secrets (NOT here): SC_CONSUMER_API_KEYS, SC_PROVIDER_TOKENS, SC_DATABASE_URL,
-  # SC_MANIFEST_URL
+  SC_MANIFEST_URL = "https://models.ayni-ai.com"
+  SC_REGISTRY_PUBKEY = "p7UUs6aCFebGUfSvFV5Wczh7kYBCEW2tDRO+dV0IpDM="
+  SC_RATE_PER_MIN = "120"
+  # Secrets (NOT here): SC_CONSUMER_API_KEYS, SC_PROVIDER_TOKENS, SC_DATABASE_URL
 
 [http_service]
   internal_port = 8080

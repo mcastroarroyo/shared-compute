@@ -165,4 +165,66 @@ func (p *PG) RecordUsage(ctx context.Context, ev UsageEvent) error {
 	return err
 }
 
+func (p *PG) CreateConsumerKey(ctx context.Context, label string) (string, string, error) {
+	raw := randToken("sc_live_")
+	id := keyID(raw)
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO consumer_api_keys (id, key_sha256, label) VALUES ($1,$2,$3)`,
+		id, sha(raw), label)
+	if err != nil {
+		return "", "", err
+	}
+	return id, raw, nil
+}
+
+func (p *PG) ListConsumerKeys(ctx context.Context) ([]KeyInfo, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT id, label, disabled, created_at FROM consumer_api_keys ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []KeyInfo
+	for rows.Next() {
+		var k KeyInfo
+		if err := rows.Scan(&k.ID, &k.Label, &k.Disabled, &k.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+func (p *PG) SetConsumerKeyDisabled(ctx context.Context, id string, disabled bool) error {
+	ct, err := p.pool.Exec(ctx,
+		`UPDATE consumer_api_keys SET disabled=$2 WHERE id=$1`, id, disabled)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("no such key: %s", id)
+	}
+	return nil
+}
+
+func (p *PG) UsageSince(ctx context.Context, t time.Time) ([]UsageRow, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT key_id, model, count(*), coalesce(sum(prompt_tokens),0), coalesce(sum(completion_tokens),0)
+		FROM usage_events WHERE created_at >= $1
+		GROUP BY key_id, model ORDER BY count(*) DESC`, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageRow
+	for rows.Next() {
+		var u UsageRow
+		if err := rows.Scan(&u.KeyID, &u.Model, &u.Requests, &u.PromptTokens, &u.CompletionTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (p *PG) Close() { p.pool.Close() }
