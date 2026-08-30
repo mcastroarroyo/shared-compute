@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/catalog"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/connectdemo"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/ratelimit"
@@ -60,6 +61,16 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /billing/balance", instrument("billing_balance", s.withAuth(s.handleBalance)))
 	mux.Handle("POST /billing/checkout", instrument("billing_checkout", s.withAuth(s.handleCheckout)))
 	mux.Handle("POST /billing/webhook", instrument("billing_webhook", http.HandlerFunc(s.handleStripeWebhook)))
+
+	// Sample Stripe Connect integration (onboard, products, storefront, charges).
+	if h, err := connectdemo.New(s.cfg.StripeSecretKey, s.cfg.StripeConnectWebhookSecret,
+		s.cfg.PublicBaseURL, s.log); err != nil {
+		s.log.Info("connect demo not mounted", "reason", err)
+	} else {
+		h.Mount(mux)
+		s.log.Info("connect demo mounted at /connect/")
+	}
+
 	s.mountAdmin(mux)
 	return withCORS(logRequests(s.log, mux))
 }

@@ -35,6 +35,8 @@ type Config struct {
 	StripeSecretKey string
 	// StripeWebhookSecret verifies /billing/webhook signatures (whsec_…).
 	StripeWebhookSecret string
+	// StripeConnectWebhookSecret verifies /connect/webhook thin-event signatures.
+	StripeConnectWebhookSecret string
 	// PublicBaseURL is where Stripe Checkout redirects back to (the console or site).
 	PublicBaseURL string
 	// BillingEnforce, when true, rejects inference from a consumer key with a
@@ -59,6 +61,7 @@ func Load() (Config, error) {
 		AdminToken:                 getenv("SC_ADMIN_TOKEN", ""),
 		StripeSecretKey:            getenv("SC_STRIPE_SECRET_KEY", ""),
 		StripeWebhookSecret:        getenv("SC_STRIPE_WEBHOOK_SECRET", ""),
+		StripeConnectWebhookSecret: getenv("SC_STRIPE_CONNECT_WEBHOOK_SECRET", ""),
 		PublicBaseURL:              strings.TrimRight(getenv("SC_PUBLIC_BASE_URL", "https://ayni-ai.com"), "/"),
 		BillingEnforce:             getenv("SC_BILLING_ENFORCE", "") == "1",
 		PriceMultiplier:            getenvFloat("SC_PRICE_MULTIPLIER", 1.0),

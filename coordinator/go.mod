@@ -8,6 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/stripe/stripe-go/v81 v81.4.0
+	github.com/stripe/stripe-go/v86 v86.4.0
 	golang.org/x/crypto v0.44.0
 )
 
