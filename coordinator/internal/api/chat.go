@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/pricing"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/scheduler"
@@ -134,6 +135,25 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 	})
 	if err != nil {
 		s.log.Warn("record usage failed", "err", err)
+	}
+
+	// Shadow-accrue provider earnings (docs/PAYMENTS.md Phase 1 — no money moves).
+	modelClass := ""
+	if s.cat != nil {
+		modelClass = s.cat.ClassOf(model)
+	}
+	q := pricing.QuoteJob(modelClass, res.TrustTier,
+		res.Usage.PromptTokens, res.Usage.CompletionTokens, 1.0)
+	if e := s.store.RecordEarning(context.WithoutCancel(ctx), store.EarningEvent{
+		ProviderID:     res.ProviderID,
+		KeyID:          keyIDFrom(ctx),
+		Model:          model,
+		ModelClass:     q.ModelClass,
+		Tier:           res.TrustTier,
+		GrossMicros:    q.GrossMicros,
+		ProviderMicros: q.ProviderMicros,
+	}); e != nil {
+		s.log.Warn("record earning failed", "err", e)
 	}
 }
 

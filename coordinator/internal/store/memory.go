@@ -14,14 +14,15 @@ import (
 // Mem is the env-configured, non-durable store. Keys and tokens come from config; usage
 // events are counted but not retained. Keys created at runtime live only until restart.
 type Mem struct {
-	mu        sync.Mutex
-	keys      map[string]string // raw key -> stable id
-	keyInfo   map[string]KeyInfo
-	tokens    map[string]struct{}
-	rawByID   map[string]string // id -> raw key (Mem only, so disable works)
-	providers map[string]ProviderRecord
-	usageRows []UsageRow
-	usage     atomic.Int64
+	mu          sync.Mutex
+	keys        map[string]string // raw key -> stable id
+	keyInfo     map[string]KeyInfo
+	tokens      map[string]struct{}
+	rawByID     map[string]string // id -> raw key (Mem only, so disable works)
+	providers   map[string]ProviderRecord
+	usageRows   []UsageRow
+	earningRows []EarningRow
+	usage       atomic.Int64
 }
 
 // NewMem builds an in-memory store from the accepted consumer keys and provider tokens.
@@ -143,5 +144,31 @@ func (m *Mem) RecordUsage(_ context.Context, ev UsageEvent) error {
 
 // UsageCount is exposed for tests / debugging.
 func (m *Mem) UsageCount() int64 { return m.usage.Load() }
+
+func (m *Mem) RecordEarning(_ context.Context, ev EarningEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.earningRows {
+		if m.earningRows[i].ProviderID == ev.ProviderID {
+			m.earningRows[i].Jobs++
+			m.earningRows[i].GrossMicros += ev.GrossMicros
+			m.earningRows[i].ProviderMicros += ev.ProviderMicros
+			return nil
+		}
+	}
+	m.earningRows = append(m.earningRows, EarningRow{
+		ProviderID: ev.ProviderID, Jobs: 1,
+		GrossMicros: ev.GrossMicros, ProviderMicros: ev.ProviderMicros,
+	})
+	return nil
+}
+
+func (m *Mem) EarningsSince(_ context.Context, _ time.Time) ([]EarningRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]EarningRow, len(m.earningRows))
+	copy(out, m.earningRows)
+	return out, nil
+}
 
 func (m *Mem) Close() {}

@@ -21,6 +21,7 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.Handle("POST /admin/keys/{id}/enable", s.withAdmin(s.adminSetKey(false)))
 	mux.Handle("GET /admin/providers", s.withAdmin(s.adminProviders))
 	mux.Handle("GET /admin/usage", s.withAdmin(s.adminUsage))
+	mux.Handle("GET /admin/earnings", s.withAdmin(s.adminEarnings))
 }
 
 func (s *Server) withAdmin(next http.HandlerFunc) http.Handler {
@@ -112,4 +113,33 @@ func (s *Server) adminUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"since_hours": hours, "rows": rows})
+}
+
+// adminEarnings reports the provider-earnings shadow ledger (docs/PAYMENTS.md).
+// Amounts are micro-USD; no money has moved.
+func (s *Server) adminEarnings(w http.ResponseWriter, r *http.Request) {
+	hours := 24 * 7
+	if h := r.URL.Query().Get("since_hours"); h != "" {
+		if n, err := strconv.Atoi(h); err == nil && n > 0 && n <= 24*365 {
+			hours = n
+		}
+	}
+	rows, err := s.store.EarningsSince(r.Context(), time.Now().Add(-time.Duration(hours)*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "earnings_failed", "could not read earnings")
+		return
+	}
+	var grossTotal, provTotal int64
+	for _, e := range rows {
+		grossTotal += e.GrossMicros
+		provTotal += e.ProviderMicros
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"since_hours":           hours,
+		"shadow":                true,
+		"rows":                  rows,
+		"gross_micros_total":    grossTotal,
+		"provider_micros_total": provTotal,
+		"provider_usd_total":    float64(provTotal) / 1_000_000,
+	})
 }

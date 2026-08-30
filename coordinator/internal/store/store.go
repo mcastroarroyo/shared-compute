@@ -49,6 +49,27 @@ type UsageRow struct {
 	CompletionTokens int64  `json:"completion_tokens"`
 }
 
+// EarningEvent is one job's shadow-accrual for a provider (see docs/PAYMENTS.md).
+// No money moves; this is the ledger the payout runs will read once Stripe is wired.
+type EarningEvent struct {
+	ProviderID     string
+	KeyID          string
+	Model          string
+	ModelClass     string
+	Tier           string
+	GrossMicros    int64
+	ProviderMicros int64
+	CreatedAt      time.Time
+}
+
+// EarningRow aggregates provider_earnings per provider for the admin view.
+type EarningRow struct {
+	ProviderID     string `json:"provider_id"`
+	Jobs           int    `json:"jobs"`
+	GrossMicros    int64  `json:"gross_micros"`
+	ProviderMicros int64  `json:"provider_micros"`
+}
+
 // Store is the coordinator's persistence boundary.
 type Store interface {
 	// Migrate applies any pending schema migrations. No-op for the memory store.
@@ -65,6 +86,12 @@ type Store interface {
 
 	// RecordUsage appends a usage event. Best-effort; a failure must not fail the request.
 	RecordUsage(ctx context.Context, ev UsageEvent) error
+
+	// RecordEarning appends a provider earnings accrual. Best-effort, shadow-only.
+	RecordEarning(ctx context.Context, ev EarningEvent) error
+
+	// EarningsSince aggregates provider_earnings per provider since t.
+	EarningsSince(ctx context.Context, t time.Time) ([]EarningRow, error)
 
 	// --- admin / console ---
 

@@ -165,6 +165,43 @@ func (p *PG) RecordUsage(ctx context.Context, ev UsageEvent) error {
 	return err
 }
 
+func (p *PG) RecordEarning(ctx context.Context, ev EarningEvent) error {
+	var providerID any
+	if ev.ProviderID != "" {
+		providerID = ev.ProviderID
+	}
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := p.pool.Exec(ct, `
+		INSERT INTO provider_earnings
+		  (provider_id, key_id, model, model_class, tier, gross_micros, provider_micros)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		providerID, ev.KeyID, ev.Model, ev.ModelClass, ev.Tier,
+		ev.GrossMicros, ev.ProviderMicros)
+	return err
+}
+
+func (p *PG) EarningsSince(ctx context.Context, t time.Time) ([]EarningRow, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT coalesce(provider_id::text,''), count(*),
+		       coalesce(sum(gross_micros),0), coalesce(sum(provider_micros),0)
+		FROM provider_earnings WHERE created_at >= $1
+		GROUP BY provider_id ORDER BY sum(provider_micros) DESC`, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EarningRow
+	for rows.Next() {
+		var e EarningRow
+		if err := rows.Scan(&e.ProviderID, &e.Jobs, &e.GrossMicros, &e.ProviderMicros); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (p *PG) CreateConsumerKey(ctx context.Context, label string) (string, string, error) {
 	raw := randToken("sc_live_")
 	id := keyID(raw)

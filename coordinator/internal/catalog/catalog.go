@@ -83,6 +83,18 @@ func (c *Catalog) Models() []Model {
 	return out
 }
 
+// ClassOf returns the hardware/model class for a model id, or "" if unknown.
+func (c *Catalog) ClassOf(model string) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, m := range c.models {
+		if m.ModelID == model {
+			return m.HardwareClass
+		}
+	}
+	return ""
+}
+
 // Has reports whether model is in the loaded catalog.
 func (c *Catalog) Has(model string) bool {
 	c.mu.RLock()

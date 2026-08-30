@@ -87,4 +87,27 @@ func TestPGUpsertAndUsage(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("expected 1 usage row, got %d", n)
 	}
+
+	// Earnings shadow ledger.
+	for i := 0; i < 2; i++ {
+		if err := pg.RecordEarning(ctx, EarningEvent{
+			ProviderID: pid, KeyID: "key_dbtest", Model: "m", ModelClass: "SMALL",
+			Tier: "device_attested", GrossMicros: 280, ProviderMicros: 196,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := pg.EarningsSince(ctx, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got EarningRow
+	for _, r := range rows {
+		if r.ProviderID == pid {
+			got = r
+		}
+	}
+	if got.Jobs != 2 || got.ProviderMicros != 392 {
+		t.Fatalf("earnings agg = %+v, want jobs=2 provider_micros=392", got)
+	}
 }
