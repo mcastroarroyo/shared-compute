@@ -88,6 +88,42 @@ impl EventSink for Bridge {
     }
 }
 
+/// Android Key Attestation evidence, produced in Kotlin from the Keystore.
+#[derive(uniffi::Record, Clone)]
+pub struct AndroidAttestation {
+    /// X.509 certs, leaf first, each base64(DER).
+    pub cert_chain_der_b64: Vec<String>,
+    /// base64 ECDSA-P256/SHA-256 over `"ayni-bind-v1" || static_pk || nonce || be64(issued_at)`.
+    pub binding_sig_b64: String,
+    pub nonce_b64: String,
+    pub issued_at: i64,
+}
+
+/// Implemented in Kotlin; signs the provider's X25519 static key with the
+/// hardware-backed device key and returns the attestation chain.
+#[uniffi::export(with_foreign)]
+pub trait AttestationSigner: Send + Sync {
+    fn sign(&self, static_pk: Vec<u8>) -> Option<AndroidAttestation>;
+}
+
+struct AttestBridge {
+    signer: Arc<dyn AttestationSigner>,
+}
+impl provider_lib::AttestHook for AttestBridge {
+    fn evidence(&self, static_pk: [u8; 32]) -> Option<provider_lib::proto::Attestation> {
+        let a = self.signer.sign(static_pk.to_vec())?;
+        Some(provider_lib::proto::Attestation {
+            kind: "android_key".to_string(),
+            evidence: Some(serde_json::json!({
+                "cert_chain_der_b64": a.cert_chain_der_b64,
+                "binding_sig_b64": a.binding_sig_b64,
+                "nonce_b64": a.nonce_b64,
+                "issued_at": a.issued_at,
+            })),
+        })
+    }
+}
+
 /// Provider configuration from the app. `data_dir` is the app's private storage; the
 /// identity key and model cache live under it.
 #[derive(uniffi::Record, Clone)]
@@ -175,6 +211,7 @@ impl Provider {
         &self,
         config: MobileConfig,
         listener: Arc<dyn ProviderListener>,
+        attestation_signer: Option<Arc<dyn AttestationSigner>>,
     ) -> Result<(), SpError> {
         let mut guard = self.inner.lock().unwrap();
         if guard.as_ref().is_some_and(|r| !r.handle.is_finished()) {
@@ -187,11 +224,13 @@ impl Provider {
             generation,
             current: self.generation.clone(),
         });
+        let attest_hook: Option<Arc<dyn provider_lib::AttestHook>> = attestation_signer
+            .map(|s| Arc::new(AttestBridge { signer: s }) as Arc<dyn provider_lib::AttestHook>);
         let cfg: ProviderConfig = config.into();
         let cancel = CancellationToken::new();
         let c2 = cancel.clone();
         let handle = self.rt.spawn(async move {
-            if let Err(e) = provider_lib::run(cfg, sink.clone(), c2).await {
+            if let Err(e) = provider_lib::run(cfg, sink.clone(), attest_hook, c2).await {
                 sink.on_event(ProviderEvent::Error {
                     message: e.to_string(),
                 });

@@ -4,6 +4,8 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import uniffi.sc_mobile.AndroidAttestation
+import uniffi.sc_mobile.AttestationSigner
 import uniffi.sc_mobile.MobileConfig
 import uniffi.sc_mobile.Provider
 import uniffi.sc_mobile.ProviderListener
@@ -96,7 +98,19 @@ object ProviderController {
             registryPubkey = s.registryPubkey.ifBlank { null },
             maxContext = s.maxContext.toUInt(),
         )
-        runCatching { native!!.start(cfg, listener) }
+        val appCtx = ctx.applicationContext
+        val signer = object : AttestationSigner {
+            override fun sign(staticPk: ByteArray): AndroidAttestation? {
+                val ev = HardwareIdentity.evidence(appCtx, staticPk) ?: return null
+                return AndroidAttestation(
+                    certChainDerB64 = ev.certChainDerB64,
+                    bindingSigB64 = ev.bindingSigB64,
+                    nonceB64 = ev.nonceB64,
+                    issuedAt = ev.issuedAt,
+                )
+            }
+        }
+        runCatching { native!!.start(cfg, listener, signer) }
             .onFailure { _status.value = Status(Phase.ERROR, it.message ?: "start failed") }
     }
 

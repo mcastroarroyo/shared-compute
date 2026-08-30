@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/attest"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/crypto"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
@@ -97,8 +98,25 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trust tier: M1 has only NullAttestation -> "community". M6/M7 verify evidence here.
-	tier := "community"
+	// Trust tier: verify any attestation evidence; unverified evidence is not an
+	// error — the node simply joins as community.
+	tier := attest.TierCommunity
+	if reg.Attestation != nil && reg.Attestation.Kind != "" && reg.Attestation.Kind != "none" {
+		res, aerr := attest.Verify(&attest.Evidence{
+			Kind:     reg.Attestation.Kind,
+			Evidence: reg.Attestation.Evidence,
+		}, staticPK)
+		tier = res.Tier
+		if aerr != nil {
+			h.Log.Warn("attestation did not clear a higher tier",
+				"kind", reg.Attestation.Kind, "err", aerr)
+		} else if res.AndroidKey != nil {
+			h.Log.Info("android key attestation verified",
+				"security_level", res.AndroidKey.SecurityLevel,
+				"verified_boot", res.AndroidKey.VerifiedBootState,
+				"device_locked", res.AndroidKey.DeviceLocked)
+		}
+	}
 
 	p := &registry.Provider{
 		ID:           uuid.NewString(),

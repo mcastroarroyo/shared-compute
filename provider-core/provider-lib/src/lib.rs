@@ -17,7 +17,7 @@ use anyhow::{bail, Context, Result};
 use sc_attest::{AttestationProvider, NullAttestation};
 use sc_inference::{InferenceBackend, MockBackend};
 use sc_net::WsMessage;
-use sc_protocol as proto;
+pub use sc_protocol as proto;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -89,6 +89,15 @@ pub enum ProviderEvent {
 /// Sink for [`ProviderEvent`]s. `Send + Sync` so it can cross task boundaries.
 pub trait EventSink: Send + Sync {
     fn on_event(&self, ev: ProviderEvent);
+}
+
+/// Produces the `attestation` block for `register`, binding a platform hardware key
+/// to the provider's X25519 static key. Implemented off-core (e.g. the Android app
+/// via Keystore) because the hardware key is not reachable from this crate.
+pub trait AttestHook: Send + Sync {
+    /// `static_pk` is the 32-byte X25519 public key the evidence must bind to.
+    /// Return `None` to stay on Tier 0.
+    fn evidence(&self, static_pk: [u8; 32]) -> Option<proto::Attestation>;
 }
 
 /// An [`EventSink`] that does nothing.
@@ -174,6 +183,7 @@ async fn build_backend(cfg: &ProviderConfig) -> Result<Arc<dyn InferenceBackend>
 pub async fn run(
     cfg: ProviderConfig,
     sink: Arc<dyn EventSink>,
+    attest_hook: Option<Arc<dyn AttestHook>>,
     shutdown: CancellationToken,
 ) -> Result<()> {
     let id_path = cfg
@@ -187,6 +197,15 @@ pub async fn run(
     let backend = build_backend(&cfg).await?;
     let attest = NullAttestation;
 
+    // Hardware attestation (Tier 1) if the caller supplied a hook; else Tier 0.
+    let hw_attestation: Option<proto::Attestation> = attest_hook
+        .as_ref()
+        .and_then(|h| h.evidence(*keypair.public.as_bytes()));
+    let mut sec_caps = attest.security_capabilities();
+    if hw_attestation.is_some() {
+        sec_caps.hardware_key = true;
+    }
+
     let caps = proto::Capabilities {
         platform: host.platform.clone(),
         arch: host.arch.clone(),
@@ -198,7 +217,7 @@ pub async fn run(
         hardware_class: hardware_class(host.ram_mb).to_string(),
         max_context: cfg.max_context,
         models: vec![cfg.model.clone()],
-        security_capabilities: attest.security_capabilities(),
+        security_capabilities: sec_caps,
     };
 
     info!(url = %cfg.coordinator_url, platform = %caps.platform, backend = %caps.backend,
@@ -237,7 +256,7 @@ pub async fn run(
         registration_token: cfg.registration_token.clone(),
         static_pk: static_pk_b64,
         capabilities: caps,
-        attestation: Some(attest.attestation()),
+        attestation: Some(hw_attestation.unwrap_or_else(|| attest.attestation())),
         resume_provider_id: None,
     };
     tx.send(WsMessage::Text(String::from_utf8(proto::to_frame(

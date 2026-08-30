@@ -101,5 +101,5 @@ async fn main() -> Result<()> {
         });
     }
 
-    provider_lib::run(cfg, Arc::new(LogSink), shutdown).await
+    provider_lib::run(cfg, Arc::new(LogSink), None, shutdown).await
 }
