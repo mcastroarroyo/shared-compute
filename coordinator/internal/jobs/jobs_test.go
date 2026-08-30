@@ -22,6 +22,24 @@ func TestDeliverRequiresAssignedProvider(t *testing.T) {
 	}
 }
 
+func TestDeliverAndCloseAreSerialized(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		m := New()
+		m.Register("job-1", "provider-a")
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			m.Deliver("job-1", "provider-a", Event{Kind: KindDone})
+		}()
+		go func() {
+			defer wg.Done()
+			m.Close("job-1")
+		}()
+		wg.Wait()
+	}
+}
+
 func TestForeignProvidersCannotWinCompletionRace(t *testing.T) {
 	m := New()
 	ch := m.Register("job-1", "provider-a")

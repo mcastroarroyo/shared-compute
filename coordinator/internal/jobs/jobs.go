@@ -47,8 +47,8 @@ func (m *Manager) Register(jobID, providerID string) <-chan Event {
 // Returns false for unknown jobs, foreign providers, or a full buffer.
 func (m *Manager) Deliver(jobID, providerID string, ev Event) bool {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	a, ok := m.m[jobID]
-	m.mu.Unlock()
 	if !ok || a.providerID != providerID {
 		return false
 	}
