@@ -6,9 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+sc-manifest = { path = "../sc-manifest" }
 thiserror.workspace = true
 sha2.workspace = true
 tracing.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util"] }
+reqwest = { workspace = true }
+futures-util.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -6,8 +6,8 @@
 |---|---|
 | Provider | Fly.io, org `personal`, region `iad` |
 | App | `ayni-coordinator` |
-| URL (raw) | https://ayni-coordinator.fly.dev |
-| URL (custom) | https://api.ayni-ai.com — **pending**: CNAME `api` → `ayni-coordinator.fly.dev` (DNS-only) in Cloudflare, then `fly certs check api.ayni-ai.com` |
+| URL | **https://api.ayni-ai.com** (Let's Encrypt cert, verified) — raw `https://ayni-coordinator.fly.dev` also works |
+| DNS | Cloudflare `ayni-ai.com`: `CNAME api → yjj6lzr.ayni-coordinator.fly.dev`, DNS-only (grey cloud) |
 | Database | Fly Postgres `ayni-coordinator-db`, attached as `SC_DATABASE_URL` |
 | Secrets | `SC_CONSUMER_API_KEYS`, `SC_PROVIDER_TOKENS`, `SC_DATABASE_URL` (via `fly secrets`) |
 | Credentials | local `.env.local` (gitignored) |
