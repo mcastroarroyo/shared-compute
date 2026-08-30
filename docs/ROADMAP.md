@@ -34,7 +34,8 @@ Tier 0 is built fully now. Every trust seam is a trait/interface so 1 and 2 slot
 | M10.1 | done — node self-benchmark + ACU capability registry (`GET /admin/nodes`) | live |
 | M10.2 | done — `POST /v1/batch` fan-out / aggregate execution primitive | live |
 | M10.3 | done — `POST /v1/workloads` quote engine (estimate → price + ETA → accept → run) | live |
-| M7–M8, M10.4–M10.5 | not started | — |
+| M10.4 | done — site reframe + public `POST /v1/quote` live-quote box on the landing page | `ayni-ai.com` |
+| M7–M8, M10.5 | not started | — |
 
 ## Milestones
 
@@ -120,8 +121,11 @@ Reframe from "rent a phone for X hours" to an intelligent hybrid compute marketp
   /v1/workloads/{id}/accept` runs an explicit-items quote through the M10.2 primitive,
   meters each sub-job, and debits the consumer once at the quoted price. Quotes are
   in-memory with a 10-min TTL (`internal/marketplace`).
-- **M10.4 — Website reframe.** Hero "the world's unused compute, on demand"; interactive
-  workload box → live quote.
+- **M10.4 — Website reframe (done).** Hero "the world's unused compute, on demand". A
+  `WorkloadBox` on the landing page makes a debounced live call to the public, unauth,
+  rate-limited `POST /v1/quote` (estimate-only, nothing stored/run) and shows the real
+  price, humanized ETA, cost breakdown, and live supply status. `/rent` reframed to "Run a
+  workload" with the `/v1/workloads` + `/v1/batch` API.
 - **M10.5 — Spot tier.** Interruptible, cheapest, best-effort completion time.
 
 **Done when:** submit one Llama workload → Ayni quotes it → accept → it fans out across
