@@ -35,7 +35,9 @@ setup_rclone() {
   export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
   export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
   export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-  export RCLONE_CONFIG_R2_ACL=private
+  export RCLONE_CONFIG_R2_REGION=auto
+  # Object-scoped tokens can't CreateBucket; the bucket already exists.
+  export RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true
 }
 
 case "${1:-}" in
