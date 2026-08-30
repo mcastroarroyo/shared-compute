@@ -19,6 +19,17 @@ Tier 0 is built fully now. Every trust seam is a trait/interface so 1 and 2 slot
 `MICRO` (1–3B, phones) · `SMALL` (3–8B) · `MEDIUM` (12–30B quantized) · `LARGE` (30–70B) ·
 `XL` (70B / MoE) · `CONFIDENTIAL_GPU`. Carried in the model manifest and the scheduler.
 
+## Status (2026-08-30)
+
+| M | State | Live at |
+|---|---|---|
+| M0 | done | — |
+| M1 | done (mock + real llama.cpp/Metal) | localhost |
+| M2 | done | `https://api.ayni-ai.com` (Fly.io + Postgres, Let's Encrypt) |
+| M3 | done | `https://models.ayni-ai.com` (R2, signed manifest, verified download) |
+| M4 | coordinator live (catalog `/v1/models`, capability scheduler, rate limits, admin API); console built, Pages deploy pending | `api.ayni-ai.com` |
+| M5–M9 | not started | — |
+
 ## Milestones
 
 ### M0 — Foundations *(no accounts)*
