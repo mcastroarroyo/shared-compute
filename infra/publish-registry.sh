@@ -3,40 +3,39 @@
 # bucket behind models.ayni-ai.com.
 #
 # Prereqs:
-#   - secrets/ayni-registry-signing.key  (from: sc-modelctl keygen --out secrets/ayni-registry-signing)
-#   - rclone with an "r2" remote configured for the Cloudflare R2 account, OR set
-#     R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY and this script will
-#     write a temporary rclone config.
+#   - secrets/ayni-registry-signing.key
+#   - rclone installed
+#   - either an rclone remote named "r2", OR these env vars:
+#       R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
 #
 # Usage:
 #   ./infra/publish-registry.sh add  <model_id> <arch> <quant> <hw_class> <ctx> <file.gguf>...
-#   ./infra/publish-registry.sh push        # (re)sign + upload manifest and all model dirs
+#   ./infra/publish-registry.sh push
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUCKET="${SC_R2_BUCKET:-models}"
-STAGE="${SC_REGISTRY_STAGE:-.registry}"      # local staging mirror of the bucket
+STAGE="${SC_REGISTRY_STAGE:-.registry}"
 KEY="secrets/ayni-registry-signing.key"
 MODELCTL="${MODELCTL:-model-registry/target/release/sc-modelctl}"
 [[ -x "$MODELCTL" ]] || MODELCTL="model-registry/target/debug/sc-modelctl"
+[[ -x "$MODELCTL" ]] || { echo "build sc-modelctl first: (cd model-registry && cargo build)"; exit 1; }
 
-[[ -f "$KEY" ]] || { echo "missing $KEY"; exit 1; }
-command -v rclone >/dev/null || { echo "install rclone (brew install rclone)"; exit 1; }
-
-rclone_remote() {
-  if rclone listremotes 2>/dev/null | grep -q '^r2:'; then echo "r2"; return; fi
-  : "${R2_ACCOUNT_ID:?}" "${R2_ACCESS_KEY_ID:?}" "${R2_SECRET_ACCESS_KEY:?}"
-  export RCLONE_CONFIG="$(mktemp)"
-  cat > "$RCLONE_CONFIG" <<EOF
-[r2]
-type = s3
-provider = Cloudflare
-access_key_id = $R2_ACCESS_KEY_ID
-secret_access_key = $R2_SECRET_ACCESS_KEY
-endpoint = https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com
-acl = private
-EOF
-  echo "r2"
+# Configure an rclone "r2" remote via env vars unless one already exists in the config.
+setup_rclone() {
+  command -v rclone >/dev/null || { echo "install rclone (brew install rclone)"; exit 1; }
+  if rclone listremotes 2>/dev/null | grep -qx 'r2:'; then
+    return
+  fi
+  : "${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID}" \
+    "${R2_ACCESS_KEY_ID:?set R2_ACCESS_KEY_ID}" \
+    "${R2_SECRET_ACCESS_KEY:?set R2_SECRET_ACCESS_KEY}"
+  export RCLONE_CONFIG_R2_TYPE=s3
+  export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
+  export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+  export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+  export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+  export RCLONE_CONFIG_R2_ACL=private
 }
 
 case "${1:-}" in
@@ -50,14 +49,16 @@ case "${1:-}" in
     echo "staged. run: $0 push"
     ;;
   push)
+    [[ -f "$KEY" ]] || { echo "missing $KEY"; exit 1; }
     "$MODELCTL" sign --manifest "$STAGE/manifest.json" --key "$KEY"
     "$MODELCTL" verify --manifest "$STAGE/manifest.json" --pub model-registry/PUBKEY
-    R=$(rclone_remote)
-    # model files first (immutable), manifest + sig last (atomic-ish switch)
-    rclone copy --progress --exclude 'manifest.json*' "$STAGE" "$R:$BUCKET"
-    rclone copyto "$STAGE/manifest.json"     "$R:$BUCKET/manifest.json"
-    rclone copyto "$STAGE/manifest.json.sig" "$R:$BUCKET/manifest.json.sig"
-    echo "published to r2://$BUCKET  (models.ayni-ai.com)"
+    setup_rclone
+    # model files first (immutable content), then manifest + sig (the switch)
+    rclone copy --progress --exclude 'manifest.json*' "$STAGE" "r2:$BUCKET"
+    rclone copyto "$STAGE/manifest.json"     "r2:$BUCKET/manifest.json"
+    rclone copyto "$STAGE/manifest.json.sig" "r2:$BUCKET/manifest.json.sig"
+    echo
+    echo "published to r2:$BUCKET  ->  https://models.ayni-ai.com/manifest.json"
     ;;
   *)
     echo "usage: $0 add <model_id> <arch> <quant> <hw_class> <ctx> <file.gguf>... | push"
