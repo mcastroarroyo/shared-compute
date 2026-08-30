@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -69,15 +70,20 @@ private fun App() {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(color = Color.White, shape = RoundedCornerShape(12.dp)) {
             Image(
-                painter = painterResource(R.drawable.ic_ayni_mark),
+                painter = painterResource(R.drawable.ayni_logo),
                 contentDescription = "Ayni",
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier
+                    .height(52.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
             )
-            Text("Ayni Provider", style = MaterialTheme.typography.headlineSmall)
         }
+        Text(
+            "Provider node",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         StatusPill(status)
 
