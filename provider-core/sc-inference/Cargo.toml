@@ -10,6 +10,7 @@ default = []
 # Real llama.cpp backend (embedded via the llama-cpp-2 crate; Metal on macOS,
 # CPU elsewhere). Off by default so the standard build stays light.
 llama = ["dep:llama-cpp-2", "dep:encoding_rs"]
+vulkan = ["llama", "llama-cpp-2/vulkan"]
 
 [dependencies]
 sc-protocol = { path = "../sc-protocol" }

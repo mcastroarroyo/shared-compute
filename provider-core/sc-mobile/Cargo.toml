@@ -13,6 +13,7 @@ crate-type = ["cdylib", "lib"]
 [features]
 default = []
 llama = ["provider-lib/llama"]
+vulkan = ["llama", "provider-lib/vulkan"]
 
 [dependencies]
 provider-lib = { path = "../provider-lib" }

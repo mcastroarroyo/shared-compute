@@ -50,7 +50,24 @@ git submodule update --init --recursive
 The `sc-inference` build script compiles it with:
 - **macOS:** Metal
 - **Linux:** CPU by default; `--features cuda` or `--features vulkan`
-- **Android (M5+):** CPU; `--features vulkan` / `--features opencl`
+- **Android (M5+):** CPU (`FEATURES=llama ./build-native.sh`).
+
+### Android Vulkan (`--features vulkan`) — not yet working
+
+The feature chain (`sc-inference` → `provider-lib` → `sc-mobile`) exists. Cross-compiling
+ggml-vulkan for `aarch64-linux-android` needs host packages the NDK toolchain hides:
+
+```bash
+brew install vulkan-headers spirv-headers shaderc
+export VULKAN_INCLUDE_DIR=/opt/homebrew/include
+export SPIRV_HEADERS_DIR="$(brew --prefix spirv-headers)/share/cmake/SPIRV-Headers"
+export VULKAN_GLSLC=/opt/homebrew/bin/glslc
+```
+
+With those set, the build gets past header/glslc discovery but `llama-cpp-sys-2`
+0.1.154's `vulkan-shaders-gen` ExternalProject (built for the host) fails with a
+malformed generated `build.make` (`missing separator`). Tracked as a follow-up —
+revisit on a newer `llama-cpp-sys-2`. CPU is the shipping Android backend.
 
 ## Layout
 

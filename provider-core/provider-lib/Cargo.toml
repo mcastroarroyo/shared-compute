@@ -8,6 +8,7 @@ license.workspace = true
 [features]
 default = []
 llama = ["sc-inference/llama"]
+vulkan = ["llama", "sc-inference/vulkan"]
 
 [dependencies]
 sc-protocol = { path = "../sc-protocol" }
