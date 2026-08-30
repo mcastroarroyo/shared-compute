@@ -156,14 +156,17 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 type connectBody struct {
 	StaticPK string `json:"static_pk"`
+	Email    string `json:"email"` // required by the V2 recipient configuration
 }
 
 // createV2RecipientAccount mirrors internal/connectdemo: platform owns pricing and
-// fees; the connected account only needs to *receive* transfers.
-func (s *Server) createV2RecipientAccount(ctx context.Context, label string) (string, error) {
+// fees; the connected account only needs to *receive* transfers. A contact email
+// is mandatory when a recipient configuration is supplied.
+func (s *Server) createV2RecipientAccount(ctx context.Context, label, email string) (string, error) {
 	acct, err := s.stripe.V2CoreAccounts.Create(ctx, &stripe.V2CoreAccountCreateParams{
-		DisplayName: stripe.String(label),
-		Dashboard:   stripe.String("express"),
+		DisplayName:  stripe.String(label),
+		ContactEmail: stripe.String(email),
+		Dashboard:    stripe.String("express"),
 		Identity: &stripe.V2CoreAccountCreateIdentityParams{
 			Country: stripe.String("us"), // PLACEHOLDER: collect the real country
 		},
@@ -237,8 +240,9 @@ func (s *Server) adminPayoutConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b connectBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&b); err != nil || strings.TrimSpace(b.StaticPK) == "" {
-		writeError(w, http.StatusBadRequest, "bad_request", "static_pk required")
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&b); err != nil ||
+		strings.TrimSpace(b.StaticPK) == "" || !strings.Contains(b.Email, "@") {
+		writeError(w, http.StatusBadRequest, "bad_request", "static_pk and a contact email are required")
 		return
 	}
 
@@ -247,7 +251,7 @@ func (s *Server) adminPayoutConnect(w http.ResponseWriter, r *http.Request) {
 	if ok && existing.StripeAccount != "" {
 		acctID = existing.StripeAccount
 	} else {
-		id, err := s.createV2RecipientAccount(r.Context(), "Ayni provider "+shortPK(b.StaticPK))
+		id, err := s.createV2RecipientAccount(r.Context(), "Ayni provider "+shortPK(b.StaticPK), b.Email)
 		if err != nil {
 			s.log.Warn("stripe v2 account create failed", "err", err)
 			writeError(w, http.StatusBadGateway, "stripe_error", "could not create connect account: "+err.Error())

@@ -114,7 +114,9 @@ export default function Payouts() {
                         disabled={!!busy}
                         onClick={() =>
                           run("connect", async () => {
-                            const r = await api.payoutConnect(p.static_pk);
+                            const email = prompt("Contact email for this payout account:");
+                            if (!email) return;
+                            const r = await api.payoutConnect(p.static_pk, email);
                             if (r?.onboarding_url) window.open(r.onboarding_url, "_blank");
                             await load();
                           })

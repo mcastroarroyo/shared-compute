@@ -81,10 +81,10 @@ export const api = {
 
   // payouts (admin token)
   payoutsPending: () => adminFetch("/admin/payouts/pending"),
-  payoutConnect: (staticPk: string) =>
+  payoutConnect: (staticPk: string, email: string) =>
     adminFetch("/admin/payouts/connect", {
       method: "POST",
-      body: JSON.stringify({ static_pk: staticPk }),
+      body: JSON.stringify({ static_pk: staticPk, email }),
     }),
   payoutRefresh: (staticPk: string) =>
     adminFetch("/admin/payouts/connect/refresh", {
