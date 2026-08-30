@@ -32,6 +32,21 @@ type chatRequest struct {
 
 const defaultMaxTokens = 512
 
+// resolveModel validates a model against the signed catalog (when one is loaded)
+// and returns its hardware class. ok is false only when a non-empty catalog is
+// active and does not list the model.
+func (s *Server) resolveModel(model string) (hwClass string, ok bool) {
+	if s.cat == nil || !s.cat.Enabled() || len(s.cat.Models()) == 0 {
+		return "", true
+	}
+	for _, m := range s.cat.Models() {
+		if m.ModelID == model {
+			return m.HardwareClass, true
+		}
+	}
+	return "", false
+}
+
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -45,19 +60,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// If a signed catalog is loaded, reject unknown models up front and carry the model's
 	// hardware class into scheduling.
-	var hwClass string
-	if s.cat != nil && s.cat.Enabled() && len(s.cat.Models()) > 0 {
-		found := false
-		for _, m := range s.cat.Models() {
-			if m.ModelID == req.Model {
-				found, hwClass = true, m.HardwareClass
-				break
-			}
-		}
-		if !found {
-			writeError(w, http.StatusNotFound, "model_not_found", "unknown model; see GET /v1/models")
-			return
-		}
+	hwClass, ok := s.resolveModel(req.Model)
+	if !ok {
+		writeError(w, http.StatusNotFound, "model_not_found", "unknown model; see GET /v1/models")
+		return
 	}
 
 	maxTok := defaultMaxTokens
@@ -100,19 +106,22 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 // relayErrInfo classifies a relay error into a metric label, HTTP status, and error code.
 func relayErrInfo(err error) (label string, status int, code, msg string) {
+	code, msg = relay.ErrCode(err)
 	switch {
 	case errors.Is(err, scheduler.ErrNoProvider):
-		return "no_provider", http.StatusServiceUnavailable, "no_provider", "no provider is currently serving this model"
+		return "no_provider", http.StatusServiceUnavailable, code, msg
 	case errors.Is(err, scheduler.ErrTierUnmet):
-		return "tier_unmet", http.StatusConflict, "trust_tier_unmet", "no connected provider meets the requested trust level"
+		return "tier_unmet", http.StatusConflict, code, msg
 	case errors.Is(err, scheduler.ErrCapsUnmet):
-		return "caps_unmet", http.StatusServiceUnavailable, "capabilities_unmet", "no connected provider meets the model's resource requirements"
+		return "caps_unmet", http.StatusServiceUnavailable, code, msg
 	case errors.Is(err, relay.ErrProviderGone):
-		return "provider_gone", http.StatusBadGateway, "provider_gone", "the assigned provider disconnected"
+		return "provider_gone", http.StatusBadGateway, code, msg
+	case errors.Is(err, relay.ErrDeadline):
+		return "deadline", http.StatusGatewayTimeout, code, msg
 	case errors.Is(err, context.Canceled):
-		return "client_cancel", 499, "client_closed", "client closed the request"
+		return "client_cancel", 499, code, msg
 	default:
-		return "error", http.StatusInternalServerError, "internal", "the request could not be completed"
+		return "error", http.StatusInternalServerError, code, msg
 	}
 }
 
