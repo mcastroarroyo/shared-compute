@@ -149,6 +149,13 @@ that meet or exceed it, or returns `409`.
 | `community` | Signed binary + network crypto only. The device owner is not prevented from inspecting plaintext. Priced lowest. |
 | `device_attested` | A hardware-backed key (Android StrongBox / a TEE / TPM 2.0) plus verified boot, with the attestation chain verified to the platform vendor's root. |
 | `confidential` | CPU TEE (SEV-SNP / TDX) + confidential GPU with remote attestation. The per-job key is released only after both verify. (Roadmap.) |
+| `cryptographic` | The provider computes on ciphertext and never holds plaintext — no hardware-trust assumption at all. Candidate primitives: fully homomorphic encryption (FHE) and secret-shared multi-party computation (MPC). **Long-term research endpoint, not on the near-term roadmap.** See §4.2. |
+
+The tiers form a ladder of *decreasing* trust in the provider: `community` trusts
+the binary, `device_attested` trusts the hardware vendor, `confidential` trusts
+the CPU/GPU TEE, `cryptographic` trusts only the math (§4.2). None of this is
+blockchain or token technology — "cryptographic" means encryption schemes you can
+compute on, and proofs, verified off-chain by the coordinator.
 
 ### 4.1 Android device attestation (implemented)
 
@@ -173,6 +180,37 @@ Freshness currently rests on the binding signature over a per-session nonce and
 timestamp, on top of the TLS channel; a coordinator-issued challenge handshake is
 a planned hardening step. Play Integrity, Linux/TPM measured boot, and Windows VBS
 enclaves follow the same `AttestationProvider` trait.
+
+### 4.2 The `cryptographic` tier (long-term research)
+
+FHE and MPC would let a `community`-class device serve genuinely private
+inference: the device owner, a rooted OS, and a malicious provider build all see
+only ciphertext, and only the consumer — who holds the secret key — decrypts the
+result. This maps cleanly onto Ayni's design; the coordinator already relays
+sealed payloads and never needs plaintext.
+
+It is not viable for LLM inference today. FHE transformer inference is roughly
+10⁴–10⁶× slower than plaintext and is bottlenecked on large-polynomial arithmetic
+and memory bandwidth — the opposite of what phone CPUs are good at — so it
+collapses the economics of an idle-device supply pool. MPC (secret-shared
+inference across several providers) is closer to practical, perhaps 10–100×
+plaintext, and it reuses the existing fan-out primitive, but adds network-round
+latency and a threshold-collusion assumption: it *distributes* trust rather than
+eliminating it. Both are tracked as research. Neither is a committed milestone.
+
+### 4.3 Proof-of-inference (near-term integrity hardening)
+
+Distinct from confidentiality: a **zero-knowledge proof of correct inference
+(zkML)** lets a provider prove it ran the exact allow-listed model on the exact
+input and produced the exact output, revealing nothing else. It does not hide the
+prompt, but it addresses result integrity (threat-model AYNI-004)
+cryptographically — instead of the coordinator re-deriving token counts and
+paying a redundancy tax to cross-check untrusted output, the provider's result
+carries a verifiable proof. Proving is currently on the order of minutes for small
+models, but it is asynchronous, which suits batch execution. This is the
+highest-leverage cryptographic investment on a months — not years — horizon and
+is a candidate for a scoped spike. Proofs are generated on the provider, verified
+by the coordinator, and never touch a chain.
 
 ---
 
@@ -321,6 +359,10 @@ and VBS attestation (Tier 1 on desktop); Stripe consumer credits and provider
 payouts; confidential compute (Tier 2); multi-region coordinators; the governance
 mechanism; external security audit; and legal review preceding general
 availability.
+
+**Research:** proof-of-inference (zkML) to make result integrity cryptographic
+rather than redundancy-based (§4.3); the `cryptographic` trust tier (FHE / MPC,
+§4.2) as the long-term endpoint of the trust ladder.
 
 ---
 

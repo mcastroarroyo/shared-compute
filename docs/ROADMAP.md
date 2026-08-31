@@ -11,8 +11,14 @@ Surfaced to consumers via the `X-Provider-Trust-Level` request header.
 | 0 | `community` | Signed provider binary + mandatory network encryption. No claim the device owner cannot inspect plaintext. |
 | 1 | `device_attested` | Hardware-backed identity key + Secure Boot / measured boot + approved binary. GPU may be outside the boundary. |
 | 2 | `confidential` | CPU TEE + confidential GPU + remote attestation before key release. |
+| 3 | `cryptographic` | Provider computes on ciphertext; no hardware-trust assumption. FHE / MPC. **Long-term research endpoint, not a committed milestone** (WHITEPAPER §4.2). |
 
 Tier 0 is built fully now. Every trust seam is a trait/interface so 1 and 2 slot in later.
+Tier 3 is a research direction. Separately, **proof-of-inference (zkML)** — a
+verifiable proof that the provider ran the exact model on the exact input — is
+the near-term way to make result integrity (AYNI-004) cryptographic instead of
+redundancy-based (WHITEPAPER §4.3); it is not blockchain technology and is a
+candidate for a scoped spike.
 
 ## Hardware classes
 
