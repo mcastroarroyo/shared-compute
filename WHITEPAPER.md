@@ -246,21 +246,66 @@ Full detail: `docs/PAYMENTS.md`.
 - **Consumer fraud / chargebacks.** Prepaid credits bound exposure; Stripe Radar
   on top-ups; payout-side reserve.
 
-Full detail: `docs/THREAT-MODEL.md`. An external penetration test and security
-audit are planned before general availability.
+Full detail: `docs/THREAT-MODEL.md` and the marketplace delta in
+`security/threat-model/SECURITY_V0.1.md`. An external penetration test and
+security audit are planned before general availability.
+
+### 7.1 Cyber harness and hardened settlement
+
+`security/` holds an **offline adversarial harness** — ~30 hostile cases for
+signed manifests and result receipts (tampered runtime/model hashes,
+`network_policy` widening, shell operations, expired leases, unbounded resource
+limits, wrong-device binding, replay, post-signature tamper) — that must all be
+rejected, run on every push by a dedicated CI job. It ships with executable
+reference models for the financial invariants: credits conserved
+(`funded = balances + charged`), provider earnings never exceed customer charges,
+payouts never exceed accrued earnings, one payable event per verified
+`(job_id, device)`.
+
+The coordinator enforces the money-critical subset today: each job is bound to
+its assigned provider and result frames from any other connection are dropped;
+`provider_earnings` is unique on `(job_id, static_pk)` and debits are idempotent
+on `job_id`; the coordinator counts completion tokens itself from the
+authenticated, strictly-ordered chunk stream and overwrites the provider's
+self-report before billing.
+
+### 7.2 Workload Manifest v1
+
+Every dispatched job can carry an **Ed25519-signed Workload Manifest** (isolated
+signer key; public key at `GET /v1/manifest-key`) that binds the job to one
+device key, runtime, model, `operation: "inference"`, `network_policy: "NONE"`, a
+resource envelope, and an expiry. The provider node verifies the signature and
+checks every resource limit against **immutable local ceilings the coordinator
+cannot raise**, refusing to run on any mismatch. A Go↔Rust known-answer test
+guards the canonical signing form. `docs/WORKLOAD-MANIFEST.md`.
 
 ---
 
-## 8. Governance
+## 8. Governance — the Ayni Council
 
 Ayni's parameters — the rate card, revenue split, the AI-stakeholder percentage,
 quality-multiplier formula, and which community initiatives get access to the
 payout and attestation rails — are set by community process, in the open.
-Proposals that materially affect how models are used or constrained are reviewed
-against a standing set of AI-interest principles, with AI systems consulted as
-advisors in that review where useful. The specific governance mechanism is being
-designed with the early community; until it is in place, changes are made
-transparently by the maintainers and logged.
+
+Specialist and adversarial review runs through the **Ayni Council**: ten
+role-specific seats (security critic, red team, privacy, financial integrity,
+node safety, renter abuse, reliability, human impact, AI stewardship, an
+independent dissenter), filled by a deterministic qualification suite with hard
+diversity rules — at least five providers, at most two seats each, at least two
+open-weight seats. Reviews are risk-tiered (3 / 5 / 10 reviewers); model output
+is untrusted and passes a strict structured schema; policy is **fail-closed**
+(any missing vote or two CRITICAL objections blocks a security-critical change);
+dissent is preserved and cannot be deleted. Decisions are published under
+`ayni-council-public-record-v1`, a hash-linked schema with no field capable of
+carrying prompts, chain-of-thought, exploits, credentials, or customer content.
+
+The Council is an **intelligence and governance layer, never an enforcement
+path** — it cannot move money, deploy code, alter balances, or command nodes.
+AI advisors reason, challenge, and recommend; deterministic policy, cryptography,
+sandboxes, and transactional ledgers enforce. Reference implementation and
+Constitution: `security/`. Public observatory: `/council` and
+`GET /v1/council/*` (labelled demonstration data until a signed roster and live
+providers exist).
 
 ---
 

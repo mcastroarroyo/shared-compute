@@ -94,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 		s.log.Info("connect demo mounted at /connect/")
 	}
 
+	s.mountCouncil(mux)
 	s.mountAdmin(mux)
 	return withCORS(logRequests(s.log, mux))
 }

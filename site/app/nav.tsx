@@ -4,10 +4,12 @@ import { usePathname } from "next/navigation";
 
 const links: [string, string, boolean][] = [
   ["/manifesto/", "Manifesto", false],
+  ["/council/", "Council", true],
   ["/initiatives/", "Initiatives", false],
   ["/share/", "Share compute", false],
   ["/rent/", "Run a workload", true],
   ["/technology/", "Technology", true],
+  ["/security/", "Security", true],
 ];
 
 export function Nav() {

@@ -187,6 +187,19 @@ section:first-of-type { border-top: 0; }
   .wbox-form { border-right: 0; border-bottom: 1px solid var(--line); }
 }
 
+/* council observatory */
+.banner-demo {
+  margin-top: 20px; padding: 12px 16px; border-radius: 10px;
+  background: #fff6e6; border: 1px solid #f0d9a8; color: #7a5a12;
+  font-size: 0.88rem; font-weight: 500; max-width: 60ch;
+}
+.ctable { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.ctable th, .ctable td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.ctable th { font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+ul.tight { margin: 4px 0 10px 1.2em; }
+ul.tight li { margin-bottom: 3px; font-size: 0.9rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; }
+
 .footer { border-top: 1px solid var(--line); padding: 48px 0; color: var(--muted); font-size: 0.92rem; }
 .footer .cols { display: flex; gap: 48px; flex-wrap: wrap; }
 .footer a { color: var(--muted); }

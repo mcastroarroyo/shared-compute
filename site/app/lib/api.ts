@@ -72,6 +72,21 @@ export type QuotePreview = {
   };
 };
 
+async function getJSON(path: string) {
+  const res = await fetch(COORDINATOR + path);
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+// Read-only Ayni Council observatory (demonstration data until a signed roster
+// and live Council providers exist).
+export const council = {
+  roster: () => getJSON("/v1/council/roster"),
+  constitution: () => getJSON("/v1/council/constitution"),
+  meetings: () => getJSON("/v1/council/meetings"),
+  decisions: () => getJSON("/v1/council/decisions"),
+};
+
 // Live, unauthenticated quote preview — estimate only, nothing stored or run.
 export function quotePreview(input: {
   model: string;

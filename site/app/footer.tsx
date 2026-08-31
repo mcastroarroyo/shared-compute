@@ -25,6 +25,8 @@ export function Footer() {
             <div className="brand">Learn</div>
             <div><Link href="/manifesto/">Manifesto</Link></div>
             <div><Link href="/technology/">Technology</Link></div>
+            <div><Link href="/security/">Security</Link></div>
+            <div><Link href="/council/">Council</Link></div>
             <div><a href={`${REPO}/blob/main/WHITEPAPER.md`}>White paper</a></div>
             <div><a href={REPO}>Source (GitHub)</a></div>
             <div><a href={`${REPO}/blob/main/LICENSE`}>License — Apache 2.0</a></div>
