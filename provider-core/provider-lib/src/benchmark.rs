@@ -22,9 +22,14 @@ use tracing::{info, warn};
 
 const CACHE_TTL_SECS: u64 = 7 * 24 * 3600;
 const SUSTAINED_TOKENS: u32 = 400;
+/// Bump whenever the measurement method changes so old on-disk reports are
+/// re-run instead of served stale after an app update.
+const CACHE_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct Cache {
+    #[serde(default)]
+    version: u32,
     ts: u64,
     model: String,
     report: proto::BenchmarkReport,
@@ -41,7 +46,8 @@ fn now() -> u64 {
 pub fn cached(data_dir: &std::path::Path, model: &str) -> Option<proto::BenchmarkReport> {
     let raw = std::fs::read(data_dir.join("benchmark.json")).ok()?;
     let c: Cache = serde_json::from_slice(&raw).ok()?;
-    if c.model == model && now().saturating_sub(c.ts) < CACHE_TTL_SECS {
+    if c.version == CACHE_VERSION && c.model == model && now().saturating_sub(c.ts) < CACHE_TTL_SECS
+    {
         Some(c.report)
     } else {
         None
@@ -50,6 +56,7 @@ pub fn cached(data_dir: &std::path::Path, model: &str) -> Option<proto::Benchmar
 
 fn store(data_dir: &std::path::Path, model: &str, report: &proto::BenchmarkReport) {
     let c = Cache {
+        version: CACHE_VERSION,
         ts: now(),
         model: model.to_string(),
         report: report.clone(),
@@ -94,12 +101,22 @@ fn prefill_prompt() -> Vec<proto::ChatMessage> {
     }]
 }
 
-fn sustained_prompt() -> Vec<proto::ChatMessage> {
-    // Forces a long, steady stream of tokens so the first vs last window reveals
-    // thermal decay. Deterministic at temperature 0.
+/// Prompts that make a small model emit a long, steady token stream. Tried in
+/// order until enough tokens are collected — a 0.5B model sometimes stops one
+/// of these early, so we keep a couple of fallbacks.
+fn sustained_prompts() -> [&'static str; 3] {
+    [
+        "List the integers from 1 to 400, one per line, with no other text.",
+        "Write a detailed 400-word description of a busy harbor town at dawn: \
+         the boats, the market, the people, the light. Do not stop early.",
+        "Count from 1 to 300, separating each number with a comma and a space.",
+    ]
+}
+
+fn user_msg(content: &str) -> Vec<proto::ChatMessage> {
     vec![proto::ChatMessage {
         role: "user".into(),
-        content: "List the integers from 1 to 400, one per line, with no other text.".into(),
+        content: content.into(),
     }]
 }
 
@@ -126,11 +143,11 @@ pub async fn run(
         .await
         .unwrap_or(0.0);
 
-    // 1. Short run for prefill tok/s.
+    // 1. Short run for prefill tok/s (enough decode tokens to be stable).
     let short = InferenceRequest {
         model: model.to_string(),
         messages: prefill_prompt(),
-        params: params(16),
+        params: params(48),
     };
     let mut sink = |_: String| {};
     let c1 = backend
@@ -138,19 +155,29 @@ pub async fn run(
         .await
         .map_err(|e| anyhow::anyhow!("benchmark short run: {e}"))?;
 
-    // 2. Sustained run: timestamp every token, compare first vs last window.
-    let sustained = InferenceRequest {
-        model: model.to_string(),
-        messages: sustained_prompt(),
-        params: params(SUSTAINED_TOKENS),
-    };
+    // 2. Sustained run: timestamp every decoded token. Keep going through the
+    // fallback prompts until we have a long stream or run out (a small model can
+    // stop any single prompt early).
     let mut stamps: Vec<Instant> = Vec::with_capacity(SUSTAINED_TOKENS as usize);
     let started = Instant::now();
-    let mut on_tok = |_: String| stamps.push(Instant::now());
-    let _ = backend
-        .generate(&sustained, &mut on_tok, CancellationToken::new())
-        .await
-        .map_err(|e| anyhow::anyhow!("benchmark sustained run: {e}"))?;
+    for prompt in sustained_prompts() {
+        if stamps.len() as u32 >= SUSTAINED_TOKENS {
+            break;
+        }
+        let remaining = SUSTAINED_TOKENS - stamps.len() as u32;
+        let req = InferenceRequest {
+            model: model.to_string(),
+            messages: user_msg(prompt),
+            params: params(remaining),
+        };
+        let mut on_tok = |_: String| stamps.push(Instant::now());
+        if let Err(e) = backend
+            .generate(&req, &mut on_tok, CancellationToken::new())
+            .await
+        {
+            warn!(error = %e, "benchmark sustained attempt failed");
+        }
+    }
     let total_secs = started.elapsed().as_secs_f64();
 
     let window_tps = |slice: &[Instant]| -> Option<f64> {
@@ -163,11 +190,12 @@ pub async fn run(
         (span > 0.0).then(|| (slice.len() - 1) as f64 / span)
     };
     // Split the token stream in half: first half vs second half exposes thermal
-    // decay. Needs enough tokens for each half to be meaningful.
-    let (start_tps, end_tps) = if stamps.len() >= 16 {
+    // decay. Each half needs enough samples to mean something.
+    let (start_tps, end_tps) = if stamps.len() >= 24 {
         let mid = stamps.len() / 2;
         (window_tps(&stamps[..mid]), window_tps(&stamps[mid..]))
     } else {
+        // Too short for a decay signal; report one figure, leave end unknown.
         (window_tps(&stamps), None)
     };
 
@@ -183,9 +211,9 @@ pub async fn run(
         .map(|n| n.get() as u32)
         .ok();
 
-    // A ~16-token prefill on a tiny prompt can report an implausible tok/s from
-    // timer granularity; cap it so it can't skew anything downstream. ACU does
-    // not use prefill, but the number is still surfaced.
+    // A tiny-prompt prefill can report an implausible tok/s from timer
+    // granularity; cap it so it can't skew anything downstream. ACU does not use
+    // prefill, but the number is still surfaced.
     let prefill_tps = c1.prefill_tps.min(20_000.0);
 
     let report = proto::BenchmarkReport {
@@ -198,7 +226,9 @@ pub async fn run(
         sample_ms: Some((total_secs * 1000.0) as u32),
         sustained_seconds: Some(total_secs as u32),
         sustained_start_tps: start_tps,
-        sustained_end_tps: end_tps.or(start_tps),
+        // None when the run was too short for a decay signal — the coordinator
+        // then treats decay as unknown and prices off decode_tps.
+        sustained_end_tps: end_tps,
         mem_bandwidth_gbps: Some(mem),
         available_ram_mb: Some(ram_mb),
         available_storage_mb: None,
