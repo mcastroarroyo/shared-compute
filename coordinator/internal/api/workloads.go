@@ -361,6 +361,15 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Council reviews the run's logs for improvements (content-free stats only).
+	review := council.ReviewRun(council.RunStats{
+		WorkloadID: q.ID, Model: q.Model,
+		Items: len(q.Spec.Items), OK: merged.OK, Failed: merged.Failed,
+		Fanout: merged.Fanout, Concurrency: merged.Concurrency, WallMS: merged.WallMS,
+		PromptTokens: merged.PromptTokens, CompletionTokens: merged.CompletionTokens,
+		QuotedUSD: float64(q.Cost.TotalMicros) / 1e6, ChargedUSD: float64(charge) / 1e6,
+	})
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":          q.ID,
 		"object":      "workload.result",
@@ -375,7 +384,8 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 			"completion_tokens": merged.CompletionTokens,
 			"total_tokens":      merged.PromptTokens + merged.CompletionTokens,
 		},
-		"stats": batchStats(merged),
+		"stats":      batchStats(merged),
+		"run_review": review,
 	})
 }
 

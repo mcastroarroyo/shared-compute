@@ -1,0 +1,65 @@
+name: release-provider
+
+# Prebuilt provider-daemon binaries for the "Share your computer" one-liner.
+# Trigger: push a tag like `provider-v0.1.0`, or run manually.
+
+on:
+  push:
+    tags: ["provider-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14        # Apple silicon
+            asset: provider-daemon-darwin-arm64
+          - os: ubuntu-latest   # x86_64 Linux
+            asset: provider-daemon-linux-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: provider-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: provider-core
+      - name: Install CMake / Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+      - name: Build
+        run: cargo build --release --bin provider-daemon --features llama
+      - name: Stage asset
+        run: cp target/release/provider-daemon "../${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - name: Publish / update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME:-provider-latest}"
+          [ "${{ github.event_name }}" = "workflow_dispatch" ] && TAG="provider-latest"
+          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "provider-daemon ($TAG)" \
+            --notes "Prebuilt provider-daemon with embedded llama.cpp. Used by the Share your computer installer." \
+            --latest=false

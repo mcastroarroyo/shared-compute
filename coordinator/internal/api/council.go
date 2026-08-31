@@ -18,6 +18,11 @@ func (s *Server) mountCouncil(mux *http.ServeMux) {
 	mux.Handle("GET /v1/council/meetings/{id}", instrument("v1_council_meeting", http.HandlerFunc(s.councilMeeting)))
 	mux.Handle("GET /v1/council/decisions", instrument("v1_council_decisions", http.HandlerFunc(s.councilDecisions)))
 	mux.Handle("GET /v1/council/decisions/{id}", instrument("v1_council_decision", http.HandlerFunc(s.councilDecision)))
+	mux.Handle("GET /v1/council/run-reviews", instrument("v1_council_run_reviews", http.HandlerFunc(s.councilRunReviews)))
+}
+
+func (s *Server) councilRunReviews(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, council.RunReviews())
 }
 
 func (s *Server) councilRoster(w http.ResponseWriter, _ *http.Request) {

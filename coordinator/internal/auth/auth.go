@@ -117,6 +117,24 @@ func (a *Auth) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/{provider}/callback", a.handleCallback)
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /v1/me", a.handleMe)
+	mux.HandleFunc("GET /v1/me/earnings", a.handleMyEarnings)
+}
+
+func (a *Auth) handleMyEarnings(w http.ResponseWriter, r *http.Request) {
+	u, ok := a.SessionUser(r)
+	if !ok {
+		writeJSON(w, 401, map[string]any{"error": "not signed in"})
+		return
+	}
+	owed, jobs, devices, err := a.EarningsForUser(r.Context(), u.ID)
+	if err != nil {
+		a.log.Warn("earnings for user", "err", err)
+		writeJSON(w, 200, map[string]any{"owed_usd": 0, "jobs": 0, "devices": 0})
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"owed_usd": float64(owed) / 1e6, "jobs": jobs, "devices": devices,
+	})
 }
 
 func (a *Auth) handleProviders(w http.ResponseWriter, _ *http.Request) {

@@ -494,6 +494,105 @@ func RecordWorkloadDecision(o Outcome, title string) {
 	}
 }
 
+// --- post-run review ("Council reviews logs for improvements") ---
+
+// RunStats is the structured, content-free outcome of an executed workload.
+type RunStats struct {
+	WorkloadID            string
+	Model                 string
+	Items, OK, Failed     int
+	Fanout, Concurrency   int
+	WallMS                int64
+	PromptTokens          int
+	CompletionTokens      int
+	QuotedUSD, ChargedUSD float64
+}
+
+// Finding is one improvement recommendation.
+type Finding struct {
+	Severity Severity `json:"severity"`
+	Issue    string   `json:"issue"`
+	Action   string   `json:"recommended_action"`
+}
+
+// RunReview is what the Council posts after a workload finishes.
+type RunReview struct {
+	WorkloadID string    `json:"workload_id"`
+	Model      string    `json:"model"`
+	Verdict    string    `json:"verdict"` // CLEAN | REVIEW
+	Findings   []Finding `json:"findings"`
+	Stats      RunStats  `json:"stats"`
+	AuditHash  string    `json:"audit_hash"`
+	RecordedAt time.Time `json:"recorded_at"`
+}
+
+var (
+	runsMu     sync.Mutex
+	runReviews []RunReview
+)
+
+// ReviewRun applies deterministic heuristics to an executed workload's stats and
+// records the review. No prompt or completion text is involved.
+func ReviewRun(s RunStats) RunReview {
+	f := []Finding{}
+	total := s.OK + s.Failed
+	if s.Failed > 0 {
+		sev := Medium
+		if total > 0 && float64(s.Failed)/float64(total) > 0.1 {
+			sev = High
+		}
+		f = append(f, Finding{sev,
+			fmt.Sprintf("%d of %d items failed", s.Failed, total),
+			"raise redundancy or add speculative straggler re-dispatch for this model class"})
+	}
+	if s.Fanout <= 1 && s.OK > 4 {
+		f = append(f, Finding{Low,
+			"the whole batch ran on a single provider",
+			"recruit more supply so items run in parallel and wall time drops"})
+	}
+	if total > 0 && s.WallMS/int64(total) > 4000 {
+		f = append(f, Finding{Low,
+			fmt.Sprintf("~%d ms per item", s.WallMS/int64(total)),
+			"offer a faster model class or GPU-class providers for latency-sensitive callers"})
+	}
+	if s.ChargedUSD > s.QuotedUSD*1.001 {
+		f = append(f, Finding{Medium,
+			fmt.Sprintf("charged $%.4f exceeded the quote $%.4f", s.ChargedUSD, s.QuotedUSD),
+			"investigate the settlement path — the customer must never pay above the accepted quote"})
+	}
+
+	verdict := "CLEAN"
+	for _, x := range f {
+		if x.Severity == High || x.Severity == Critical {
+			verdict = "REVIEW"
+		}
+	}
+	rr := RunReview{
+		WorkloadID: s.WorkloadID, Model: s.Model, Verdict: verdict,
+		Findings: f, Stats: s, RecordedAt: time.Now().UTC(),
+	}
+	rr.AuditHash = recordHash(map[string]any{
+		"workload_id": s.WorkloadID, "verdict": verdict, "findings": len(f),
+		"ok": s.OK, "failed": s.Failed, "fanout": s.Fanout, "wall_ms": s.WallMS,
+	})
+
+	runsMu.Lock()
+	runReviews = append(runReviews, rr)
+	if len(runReviews) > 50 {
+		runReviews = runReviews[len(runReviews)-50:]
+	}
+	runsMu.Unlock()
+	return rr
+}
+
+// RunReviews returns the recorded post-run reviews (newest last).
+func RunReviews() map[string]any {
+	runsMu.Lock()
+	out := append([]RunReview(nil), runReviews...)
+	runsMu.Unlock()
+	return map[string]any{"data": "live", "count": len(out), "run_reviews": out}
+}
+
 func lastDemoHash() string {
 	d := demoDecisions()
 	if len(d) == 0 {
