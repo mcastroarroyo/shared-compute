@@ -26,9 +26,11 @@ const (
 	MaxItems                = 5000
 	MaxRedundancy           = 3
 	DefaultCompletionTokens = 512
-	// ReferenceNodeTPS is one mid-range phone's sustained tok/s — the fallback
-	// throughput for a preview quote when no matching supply is online.
-	ReferenceNodeTPS = 12.0
+	// ReferenceNodeTPS is one phone's sustained tok/s on the 0.5B Q4 model — the
+	// fallback throughput for a preview quote when no matching supply is online.
+	// Anchored to a measured Pixel 9 (llama.cpp CPU): ~17.7 decode / ~18.3
+	// sustained tok/s.
+	ReferenceNodeTPS = 18.0
 
 	// --- spot tier (M10.5) ---
 	// SpotSupplyFraction is the share of aggregate throughput a spot workload is
