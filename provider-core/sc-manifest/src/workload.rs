@@ -407,13 +407,11 @@ mod tests {
         );
         let raw = std::fs::read_to_string(path).expect("run the Go fixture test first");
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let sm: SignedManifest =
-            serde_json::from_value(v["signed_manifest"].clone()).unwrap();
+        let sm: SignedManifest = serde_json::from_value(v["signed_manifest"].clone()).unwrap();
         let pub_b64 = v["signer_public_b64"].as_str().unwrap();
         let dev = v["expected_device_pk"].as_str().unwrap();
         let now = v["now"].as_i64().unwrap();
-        let trusted =
-            TrustedSigners::parse(&[format!("signer-v1:{pub_b64}")]).unwrap();
+        let trusted = TrustedSigners::parse(&[format!("signer-v1:{pub_b64}")]).unwrap();
         verify(&sm, &trusted, &NodeSafetyPolicy::default(), dev, now)
             .expect("Go-signed manifest failed Rust verification — canonical bytes diverged");
     }
