@@ -29,7 +29,7 @@ func TestInstallScriptRenders(t *testing.T) {
 		"#!/usr/bin/env bash",
 		"set -euo pipefail",
 		`COORD_WS="${SC_COORDINATOR_URL:-wss://api.example.com/ws/provider}"`,
-		"https://models.example.com/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+		`MODEL_URL="https://models.example.com/${MODEL}/${MODEL}.gguf"`,
 		"releases/download/provider-latest/${asset}",
 		`SC_REGISTRATION_TOKEN="$SC_REGISTRATION_TOKEN"`,
 	} {

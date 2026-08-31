@@ -160,7 +160,8 @@ Claude never runs step 4.
 
 - Provider payout onboarding has no self-serve UI — operator triggers
   `/admin/payouts/connect` and passes the link along.
-- `models.ayni-ai.com/qwen2.5-0.5b-instruct-q4_k_m.gguf` must exist (R2). If the
-  installer's model fetch 404s, upload it with `sc-modelctl` / `wrangler`.
+- The installer fetches the model at the signed-registry layout
+  `models.ayni-ai.com/<id>/<id>.gguf` (verified present). It does **not** verify
+  the manifest signature the way `sc-models` does — it trusts the R2 origin.
 - Council `run-reviews` / live `decisions` are in-memory — they reset on deploy.
 - One model reviewer max wired today; the 10-seat roster is demonstration data.

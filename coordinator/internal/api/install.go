@@ -31,7 +31,8 @@ set -euo pipefail
 : "${SC_REGISTRATION_TOKEN:?set SC_REGISTRATION_TOKEN (from the Share your computer page)}"
 COORD_WS="${SC_COORDINATOR_URL:-%s}"
 MODEL="%s"
-MODEL_URL="%s/%s.gguf"
+# signed registry layout: {base}/{model_id}/{model_id}.gguf  (see sc-models)
+MODEL_URL="%s/${MODEL}/${MODEL}.gguf"
 DIR="${AYNI_DIR:-$HOME/.ayni}"
 mkdir -p "$DIR/models"
 
@@ -67,7 +68,7 @@ exec env \
   SC_BACKEND="${SC_BACKEND:-llama}" \
   SC_IDENTITY_PATH="$DIR/identity.key" \
   "$BIN"
-`, ws, model, modelURL, model, repo, repo)
+`, ws, model, modelURL, repo, repo)
 
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
