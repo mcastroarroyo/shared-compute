@@ -40,3 +40,8 @@ Cargo.lock.orig
 
 # Go
 /coordinator/coverage.out
+
+# python venv for the security harness
+security/.venv/
+__pycache__/
+*.pyc
