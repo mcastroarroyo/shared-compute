@@ -17,16 +17,18 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/crypto"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/manifest"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/scheduler"
 )
 
 type Deps struct {
-	Reg *registry.Registry
-	Job *jobs.Manager
-	Cfg config.Config
-	Log *slog.Logger
+	Reg      *registry.Registry
+	Job      *jobs.Manager
+	Cfg      config.Config
+	Log      *slog.Logger
+	Manifest *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
 }
 
 type Request struct {
@@ -108,13 +110,21 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 	defer prov.ReleaseSlot()
 
 	deadline := d.Cfg.JobDeadlineMS
-	if err := prov.Send(protocol.JobRequest{
+	jr := protocol.JobRequest{
 		Type:       protocol.TypeJobRequest,
 		JobID:      jobID,
 		Model:      req.Model,
 		DeadlineMS: deadline,
 		Sealed:     sealed,
-	}); err != nil {
+	}
+	if d.Manifest != nil {
+		if mraw, merr := signJobManifest(d.Manifest, jobID, prov, req, ptRaw, deadline); merr != nil {
+			d.Log.Warn("manifest sign failed", "job_id", jobID, "err", merr)
+		} else {
+			jr.Manifest = mraw
+		}
+	}
+	if err := prov.Send(jr); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrProviderGone, err)
 	}
 
@@ -204,6 +214,35 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 			}
 		}
 	}
+}
+
+// signJobManifest builds and signs a Workload Manifest v1 for one job. Hashes
+// are deterministic derivations for v1 (the node structurally validates them);
+// real registry hashes land with the signed model-registry integration.
+func signJobManifest(s *manifest.Signer, jobID string, prov *registry.Provider, req Request, ptRaw []byte, deadlineMS int64) (json.RawMessage, error) {
+	now := time.Now().Unix()
+	maxOut := req.Params.MaxTokens
+	sm, err := s.Sign(manifest.WorkloadManifest{
+		JobID:          jobID,
+		LeaseID:        jobID,
+		WorkloadID:     jobID,
+		CustomerID:     "", // no consumer PII in the manifest
+		DevicePK:       base64.StdEncoding.EncodeToString(prov.StaticPK[:]),
+		RuntimeID:      "llama.cpp",
+		RuntimeVersion: "v0",
+		RuntimeHash:    manifest.Sha256Hex("llama.cpp@v0"),
+		ModelID:        req.Model,
+		ModelHash:      manifest.Sha256Hex(req.Model),
+		InputHash:      manifest.Sha256Hex(string(ptRaw)),
+		ResourceLimits: manifest.DefaultLimits(maxOut),
+		CreatedAt:      now,
+		ExpiresAt:      now + manifest.LeaseSeconds(deadlineMS),
+		Nonce:          manifest.NewNonce(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(sm)
 }
 
 // ErrCode maps an Execute/ExecuteOn error to a stable short code and a

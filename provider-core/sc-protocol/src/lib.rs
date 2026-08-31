@@ -328,6 +328,10 @@ pub struct JobRequest {
     #[serde(default)]
     pub deadline_ms: Option<u64>,
     pub sealed: SealedPayload,
+    /// Optional, additive (security v0.1): a signed Workload Manifest v1. Parsed
+    /// by the node as `sc_manifest::workload::SignedManifest` when present.
+    #[serde(default)]
+    pub manifest: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

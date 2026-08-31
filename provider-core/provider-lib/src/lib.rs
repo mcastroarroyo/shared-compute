@@ -39,6 +39,11 @@ pub struct ProviderConfig {
     pub model_dir: Option<PathBuf>,
     pub identity_path: Option<PathBuf>,
     pub max_context: u32,
+    /// Coordinator Workload Manifest v1 signing keys the node will accept,
+    /// each `"signer-id:<base64>"` (or bare `<base64>`). Empty = don't verify.
+    pub manifest_verify_keys: Vec<String>,
+    /// Reject any job that arrives without a valid signed manifest.
+    pub require_manifest: bool,
 }
 
 impl Default for ProviderConfig {
@@ -54,6 +59,8 @@ impl Default for ProviderConfig {
             model_dir: None,
             identity_path: None,
             max_context: 8192,
+            manifest_verify_keys: Vec::new(),
+            require_manifest: false,
         }
     }
 }
@@ -197,6 +204,18 @@ pub async fn run(
     let host = sc_telemetry::host_info();
     let backend = build_backend(&cfg).await?;
     let attest = NullAttestation;
+
+    let manifest_gate = Arc::new(job::ManifestGate::new(
+        &cfg.manifest_verify_keys,
+        cfg.require_manifest,
+    ));
+    if !cfg.manifest_verify_keys.is_empty() || cfg.require_manifest {
+        info!(
+            keys = cfg.manifest_verify_keys.len(),
+            require = cfg.require_manifest,
+            "workload manifest verification enabled"
+        );
+    }
 
     // Hardware attestation (Tier 1) if the caller supplied a hook; else Tier 0.
     let hw_attestation: Option<proto::Attestation> = attest_hook
@@ -368,12 +387,12 @@ pub async fn run(
                         let job_id = jr.job_id.clone();
                         jobs.lock().await.insert(job_id.clone(), token.clone());
                         sink.on_event(ProviderEvent::JobStarted { job_id: job_id.clone() });
-                        let (identity, backend, tx2, active2, jobs2, sink2) = (
+                        let (identity, backend, tx2, active2, jobs2, sink2, gate2) = (
                             keypair.clone(), backend.clone(), tx.clone(),
-                            active.clone(), jobs.clone(), sink.clone(),
+                            active.clone(), jobs.clone(), sink.clone(), manifest_gate.clone(),
                         );
                         tokio::spawn(async move {
-                            let out = job::handle_job(jr, identity, backend, tx2, token, active2).await;
+                            let out = job::handle_job(jr, identity, backend, tx2, token, active2, gate2).await;
                             jobs2.lock().await.remove(&job_id);
                             sink2.on_event(ProviderEvent::JobFinished {
                                 job_id,

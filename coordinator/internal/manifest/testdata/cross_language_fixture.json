@@ -1,0 +1,36 @@
+{
+  "expected_device_pk": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  "now": 1005,
+  "signed_manifest": {
+    "manifest": {
+      "manifest_version": 1,
+      "job_id": "job-1",
+      "lease_id": "job-1",
+      "workload_id": "job-1",
+      "customer_id": "",
+      "device_pk": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "runtime_id": "llama.cpp",
+      "runtime_version": "v0",
+      "runtime_hash": "08c9afff179fe8cc4e54698cfb8d9584b30948706e04b63560667144973d24ba",
+      "model_id": "qwen2.5-0.5b",
+      "model_hash": "02d40d8e2af72e173e5261825cb75a72dba191f576c63b566e25ac426ccf89f3",
+      "operation": "inference",
+      "input_hash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+      "resource_limits": {
+        "max_runtime_ms": 120000,
+        "max_memory_mb": 6144,
+        "max_storage_mb": 12288,
+        "max_input_bytes": 262144,
+        "max_output_tokens": 256,
+        "max_cpu_duty_cycle_pct": 75
+      },
+      "network_policy": "NONE",
+      "created_at": 1000,
+      "expires_at": 1120,
+      "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "signer_id": "signer-v1",
+    "signature": "5JvcFpMAG/H6JI3vqNMVu6LDTXkMbvp50wFll00Pdk87SR1jvX5fU8+LJAzhkX2WiY7qPoJACGXFPTB/zRC5Dg=="
+  },
+  "signer_public_b64": "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik="
+}

@@ -16,7 +16,7 @@ that become material once strangers can buy compute and providers can earn money
 
 | ID | Severity | Finding | Required control |
 |---|---|---|---|
-| AYNI-001 | Critical | Job requests are encrypted but do not yet carry a signed Workload Manifest v1. | Isolated signing authority; node signature verification; runtime/model hash allowlists; expiry and nonce. |
+| AYNI-001 | Critical → **partly addressed** | Job requests are encrypted but did not carry a signed Workload Manifest v1. **Done:** `internal/manifest` signs a per-job manifest (isolated Ed25519 key, `SC_MANIFEST_SIGNING_KEY`, published at `GET /v1/manifest-key`); the Rust node (`sc_manifest::workload`) verifies signature, device binding, fixed vocabulary, expiry, and immutable resource ceilings before running, and `SC_REQUIRE_MANIFEST` rejects unsigned jobs. A Go↔Rust known-answer test guards the canonical form. **Remaining:** registry-hash allowlists, persisted nonce store, KMS/HSM signer custody. See `docs/WORKLOAD-MANIFEST.md`. |
 | AYNI-002 | Critical | `provider_earnings` has no `job_id` uniqueness constraint, so the database does not enforce one payable event per verified job/device. | Persist `job_id`; unique `(job_id, static_pk)`; idempotent insert under concurrency. |
 | AYNI-003 | Critical | Provider job frames are routed by `job_id` alone; the in-flight manager does not bind delivery to the provider selected for that job. | Bind `(job_id, provider_id)` and reject frames from every other connection. |
 | AYNI-004 | High | Provider-reported `job_done.usage` currently feeds metering and earnings despite documentation calling it advisory. | Coordinator-authored counts or cryptographically/verifiably derived receipts; reject inconsistent sequences and ceilings. |

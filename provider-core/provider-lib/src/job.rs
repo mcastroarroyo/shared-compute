@@ -9,13 +9,88 @@ use std::sync::{
 };
 use std::time::Instant;
 
-use sc_crypto::{open as box_open, parse_public, seal as box_seal, Keypair};
+use sc_crypto::{encode_public, open as box_open, parse_public, seal as box_seal, Keypair};
 use sc_inference::{InferenceBackend, InferenceError, InferenceRequest};
+use sc_manifest::workload::{self as wl, NodeSafetyPolicy, SignedManifest, TrustedSigners};
 use sc_net::WsMessage;
 use sc_protocol as proto;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+
+/// Node-side Workload Manifest v1 gate. Disabled unless the daemon is given a
+/// coordinator verify key (or told to require a manifest).
+pub struct ManifestGate {
+    trusted: TrustedSigners,
+    policy: NodeSafetyPolicy,
+    require: bool,
+}
+
+impl ManifestGate {
+    /// `verify_keys` are `"signer-id:<b64>"` (or bare `<b64>`). When both the key
+    /// list and `require` are empty/false the gate is a no-op.
+    pub fn new(verify_keys: &[String], require: bool) -> Self {
+        let trusted = TrustedSigners::parse(verify_keys).unwrap_or_else(|e| {
+            warn!(error = %e, "ignoring unparseable manifest verify key(s)");
+            TrustedSigners::default()
+        });
+        Self {
+            trusted,
+            policy: NodeSafetyPolicy::default(),
+            require,
+        }
+    }
+
+    fn active(&self) -> bool {
+        !self.trusted.is_empty() || self.require
+    }
+
+    /// Returns an error code (for `job_error`) when the job must not run.
+    fn check(
+        &self,
+        jr: &proto::JobRequest,
+        my_pk_b64: &str,
+        pt_model: &str,
+        pt_job_id: &str,
+    ) -> Result<(), &'static str> {
+        if !self.active() {
+            return Ok(());
+        }
+        let raw = match &jr.manifest {
+            Some(v) => v,
+            None => {
+                return if self.require {
+                    Err("manifest-required")
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        if self.trusted.is_empty() {
+            // A manifest arrived but we hold no key to check it against.
+            return if self.require {
+                Err("no-verify-key")
+            } else {
+                Ok(())
+            };
+        }
+        let sm: SignedManifest =
+            serde_json::from_value(raw.clone()).map_err(|_| "manifest-parse")?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        wl::verify(&sm, &self.trusted, &self.policy, my_pk_b64, now)
+            .map_err(|_| "manifest-verify")?;
+        if sm.manifest.job_id != jr.job_id || sm.manifest.job_id != pt_job_id {
+            return Err("manifest-job-mismatch");
+        }
+        if sm.manifest.model_id != pt_model {
+            return Err("manifest-model-mismatch");
+        }
+        Ok(())
+    }
+}
 
 /// Decrements the active-job gauge on drop.
 struct ActiveGuard(Arc<AtomicU32>);
@@ -73,6 +148,7 @@ pub async fn handle_job(
     tx: UnboundedSender<WsMessage>,
     cancel: CancellationToken,
     active: Arc<AtomicU32>,
+    manifest_gate: Arc<ManifestGate>,
 ) -> JobOutcome {
     active.fetch_add(1, Ordering::Relaxed);
     let _guard = ActiveGuard(active);
@@ -100,6 +176,15 @@ pub async fn handle_job(
             return JobOutcome::failed();
         }
     };
+
+    // Workload Manifest v1: verify the signed authorization binds this job to
+    // this device, runtime, model, and resource envelope before running anything.
+    let my_pk_b64 = encode_public(&identity.public);
+    if let Err(reason) = manifest_gate.check(&jr, &my_pk_b64, &pt.model, &pt.job_id) {
+        warn!(job_id = %job_id, reason, "workload manifest rejected");
+        job_error(&tx, &job_id, "manifest-invalid");
+        return JobOutcome::failed();
+    }
 
     if !backend.has_model(&pt.model) {
         job_error(&tx, &job_id, "model-missing");

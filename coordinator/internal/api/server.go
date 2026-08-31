@@ -14,6 +14,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/connectdemo"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/manifest"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/marketplace"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/metrics"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/ratelimit"
@@ -41,9 +42,17 @@ type Server struct {
 	hub      *wshub.Hub
 	stripe   *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
 	quotes   *marketplace.Store
+	signer   *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
+	signer, err := manifest.NewSigner(cfg.ManifestSignerID, cfg.ManifestSigningKey)
+	if err != nil {
+		log.Error("manifest signer disabled", "err", err)
+		signer = nil
+	} else if signer != nil {
+		log.Info("workload manifest signing enabled", "signer_id", signer.ID())
+	}
 	return &Server{
 		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
 		rl:       ratelimit.New(cfg.RatePerMin),
@@ -52,6 +61,7 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		hub:      &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
 		stripe:   newStripeClient(cfg.StripeSecretKey),
 		quotes:   marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
+		signer:   signer,
 	}
 }
 
@@ -60,6 +70,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /healthz", instrument("healthz", http.HandlerFunc(s.handleHealth)))
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
+	mux.Handle("GET /v1/manifest-key", instrument("v1_manifest_key", http.HandlerFunc(s.handleManifestKey)))
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.Handle("POST /v1/batch", instrument("v1_batch", s.withAuth(s.handleBatch)))
 	mux.Handle("POST /v1/quote", instrument("v1_quote", http.HandlerFunc(s.handleQuotePreview)))
@@ -135,7 +146,22 @@ func instrument(route string, next http.Handler) http.Handler {
 }
 
 func (s *Server) deps() relay.Deps {
-	return relay.Deps{Reg: s.reg, Job: s.job, Cfg: s.cfg, Log: s.log}
+	return relay.Deps{Reg: s.reg, Job: s.job, Cfg: s.cfg, Log: s.log, Manifest: s.signer}
+}
+
+// handleManifestKey publishes the Workload Manifest v1 signing public key so a
+// provider node can verify what it is asked to run. 404 when signing is off.
+func (s *Server) handleManifestKey(w http.ResponseWriter, _ *http.Request) {
+	if s.signer == nil {
+		writeError(w, http.StatusNotFound, "not_enabled", "manifest signing is not configured")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"signer_id":        s.signer.ID(),
+		"public_key":       s.signer.PublicKeyB64(),
+		"algorithm":        "ed25519",
+		"manifest_version": manifest.Version,
+	})
 }
 
 // withAuth checks the consumer Bearer API key and stashes its stable id in the context.

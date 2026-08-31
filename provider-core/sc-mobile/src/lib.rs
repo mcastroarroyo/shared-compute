@@ -138,6 +138,13 @@ pub struct MobileConfig {
     pub manifest_url: Option<String>,
     pub registry_pubkey: Option<String>,
     pub max_context: u32,
+    /// Coordinator Workload Manifest v1 signing key(s), comma-separated,
+    /// each "signer-id:<base64>" or bare "<base64>".
+    #[uniffi(default = None)]
+    pub manifest_verify_key: Option<String>,
+    /// Reject any job that arrives without a valid signed manifest.
+    #[uniffi(default = false)]
+    pub require_manifest: bool,
 }
 
 impl From<MobileConfig> for ProviderConfig {
@@ -154,6 +161,14 @@ impl From<MobileConfig> for ProviderConfig {
             model_dir: Some(data.join("models")),
             identity_path: Some(data.join("identity.key")),
             max_context: c.max_context,
+            manifest_verify_keys: c
+                .manifest_verify_key
+                .unwrap_or_default()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            require_manifest: c.require_manifest,
         }
     }
 }

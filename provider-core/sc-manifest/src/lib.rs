@@ -1,8 +1,13 @@
-//! The signed model registry manifest — shared by `sc-modelctl` (writes + signs) and
-//! `sc-models` (fetches + verifies).
+//! Two signed-manifest kinds live in this crate:
 //!
-//! `manifest.json` is canonicalized (sorted keys, no whitespace) before signing. The
-//! detached signature lives at `manifest.json.sig` as base64 Ed25519.
+//! * this module — the **model registry** manifest (`manifest.json`), shared by
+//!   `sc-modelctl` (writes + signs) and `sc-models` (fetches + verifies).
+//!   Canonicalized with sorted keys.
+//! * [`workload`] — the per-job **Workload Manifest v1** the coordinator signs and
+//!   the provider node verifies before running anything. Canonicalized in struct
+//!   field order to match the Go coordinator byte-for-byte.
+
+pub mod workload;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};

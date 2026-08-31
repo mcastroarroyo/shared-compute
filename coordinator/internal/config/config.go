@@ -53,6 +53,14 @@ type Config struct {
 	// QuoteTTLSeconds is how long a workload quote stays acceptable. Default 600.
 	QuoteTTLSeconds int
 
+	// --- workload manifest signing (security v0.1) ---
+	// ManifestSigningKey is a base64 32-byte Ed25519 seed. When set, the
+	// coordinator attaches a signed Workload Manifest v1 to every job and serves
+	// its public key at GET /v1/manifest-key. Empty disables it entirely.
+	ManifestSigningKey string
+	// ManifestSignerID is the signer identity carried in each manifest.
+	ManifestSignerID string
+
 	// --- spot tier (M10.5) ---
 	// SpotPriceFactor scales the whole quote (and provider accruals) for a spot
 	// workload: cheaper for the buyer, less for the seller, both interruptible.
@@ -85,6 +93,8 @@ func Load() (Config, error) {
 		QuoteTTLSeconds:            getenvInt("SC_QUOTE_TTL_SECONDS", 600),
 		SpotPriceFactor:            getenvFloat("SC_SPOT_PRICE_FACTOR", 0.6),
 		SpotEtaSlack:               getenvFloat("SC_SPOT_ETA_SLACK", 3),
+		ManifestSigningKey:         getenv("SC_MANIFEST_SIGNING_KEY", ""),
+		ManifestSignerID:           getenv("SC_MANIFEST_SIGNER_ID", "signer-v1"),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

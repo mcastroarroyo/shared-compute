@@ -43,6 +43,13 @@ struct Args {
     identity_path: Option<PathBuf>,
     #[arg(long, default_value_t = 8192)]
     max_context: u32,
+    /// Coordinator Workload Manifest v1 signing key(s), comma-separated,
+    /// each "signer-id:<base64>" or bare "<base64>". Empty = don't verify.
+    #[arg(long, env = "SC_MANIFEST_VERIFY_KEY", default_value = "")]
+    manifest_verify_key: String,
+    /// Reject any job that arrives without a valid signed manifest ("1" to enable).
+    #[arg(long, env = "SC_REQUIRE_MANIFEST", default_value = "")]
+    require_manifest: String,
 }
 
 struct LogSink;
@@ -94,6 +101,13 @@ async fn main() -> Result<()> {
         model_dir: args.model_dir,
         identity_path: args.identity_path,
         max_context: args.max_context,
+        manifest_verify_keys: args
+            .manifest_verify_key
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        require_manifest: matches!(args.require_manifest.as_str(), "1" | "true" | "yes"),
     };
 
     let shutdown = CancellationToken::new();

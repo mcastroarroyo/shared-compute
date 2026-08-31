@@ -203,6 +203,10 @@ type JobRequest struct {
 	Model      string        `json:"model"`
 	DeadlineMS int64         `json:"deadline_ms,omitempty"`
 	Sealed     SealedPayload `json:"sealed"`
+	// Manifest is an optional, additive extension (security v0.1): a signed
+	// Workload Manifest v1 (see internal/manifest). Absent unless the coordinator
+	// is configured with a signing key.
+	Manifest json.RawMessage `json:"manifest,omitempty"`
 }
 
 type Cancel struct {
