@@ -79,6 +79,13 @@ type Config struct {
 	// SpotEtaSlack multiplies the optimistic ETA to give the upper bound of the
 	// spot completion-time band. Default 3.
 	SpotEtaSlack float64
+
+	// --- Ayni Council workload review ---
+	// One real model seat on the Council that reviews each workload before it is
+	// quoted. Empty -> only the deterministic reviewers run.
+	CouncilModelAPI string // "anthropic" | "openai"
+	CouncilModelKey string
+	CouncilModelID  string
 }
 
 func Load() (Config, error) {
@@ -112,6 +119,9 @@ func Load() (Config, error) {
 		AuthCallbackBase:           strings.TrimRight(getenv("SC_AUTH_CALLBACK_BASE", "https://api.ayni-ai.com"), "/"),
 		AppURL:                     strings.TrimRight(getenv("SC_APP_URL", "https://app.ayni-ai.com"), "/"),
 		CookieDomain:               getenv("SC_COOKIE_DOMAIN", ".ayni-ai.com"),
+		CouncilModelAPI:            getenv("SC_COUNCIL_MODEL_API", ""),
+		CouncilModelKey:            getenv("SC_COUNCIL_MODEL_KEY", ""),
+		CouncilModelID:             getenv("SC_COUNCIL_MODEL_ID", ""),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

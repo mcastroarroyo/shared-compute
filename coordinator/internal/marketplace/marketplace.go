@@ -164,6 +164,7 @@ type Quote struct {
 	Spec       Spec
 	Estimate   Estimate
 	Cost       pricing.WorkloadCost
+	Council    any // *council.Outcome — set by the api layer; nil if review is off
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 	Accepted   bool

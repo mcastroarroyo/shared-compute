@@ -222,14 +222,26 @@ func demoDecisions() []PublicDecision {
 	return recs
 }
 
+// allDecisions is the seeded demo ledger followed by any real workload
+// decisions recorded this process lifetime, hash-linked as one chain.
+func allDecisions() []PublicDecision {
+	recs := demoDecisions()
+	recentMu.Lock()
+	recs = append(recs, recent...)
+	recentMu.Unlock()
+	return recs
+}
+
 // Decisions returns the public ledger + whether the hash chain verifies.
 func Decisions() map[string]any {
-	recs := demoDecisions()
+	recs := allDecisions()
+	live := len(recs) - len(demoDecisions())
 	return map[string]any{
-		"data":        "demonstration",
+		"data":        "partly-live",
 		"disclaimer":  disclaimer,
 		"protocol":    PublicRecordProtocol,
 		"count":       len(recs),
+		"live_count":  live,
 		"chain_valid": verifyChain(recs),
 		"decisions":   recs,
 	}
@@ -237,9 +249,9 @@ func Decisions() map[string]any {
 
 // Decision returns one record by id, or ok=false.
 func Decision(id string) (map[string]any, bool) {
-	for _, r := range demoDecisions() {
+	for _, r := range allDecisions() {
 		if r.DecisionID == id {
-			return map[string]any{"data": "demonstration", "disclaimer": disclaimer, "decision": r}, true
+			return map[string]any{"data": "record", "disclaimer": disclaimer, "decision": r}, true
 		}
 	}
 	return nil, false

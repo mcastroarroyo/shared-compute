@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/batch"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/capability"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/council"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/marketplace"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/pricing"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
@@ -140,7 +141,23 @@ func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ayni Council review — structured facts only, no prompt content.
+	prop := council.ForWorkload(req.Model, spec.ModelClass, tier, est.Items,
+		est.PromptTokens, est.CompletionTokens, red, req.Spot,
+		float64(cost.TotalMicros)/1e6, est.ETASeconds)
+	outcome := council.Evaluate(r.Context(), prop, s.council, council.DefaultPolicy())
+	council.RecordWorkloadDecision(outcome, prop.Title)
+	if outcome.Decision == council.Block {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":   "council_blocked",
+			"message": "the Ayni Council did not approve this workload",
+			"council": outcome,
+		})
+		return
+	}
+
 	q := s.quotes.Create(keyIDFrom(r.Context()), req.Model, spec, est, cost)
+	q.Council = &outcome
 	writeJSON(w, http.StatusCreated, s.renderQuote(q))
 }
 
@@ -271,6 +288,11 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 			"this quote was built from an estimate; resubmit with explicit items[] to run it")
 		return
 	}
+	if o, ok := q.Council.(*council.Outcome); ok && !o.Acceptable() {
+		writeError(w, http.StatusConflict, "council_blocked",
+			"the Ayni Council blocked this workload; it cannot be run")
+		return
+	}
 	if s.cfg.BillingEnforce {
 		if bal, _ := s.store.CreditBalance(r.Context(), keyIDFrom(r.Context())); bal < q.Cost.TotalMicros {
 			writeError(w, http.StatusPaymentRequired, "insufficient_credit",
@@ -398,6 +420,7 @@ func (s *Server) renderQuote(q *marketplace.Quote) map[string]any {
 				"ayni_margin":         round4usd(c.MarginMicros),
 			},
 		},
+		"council":    q.Council,
 		"created_at": q.CreatedAt.UTC().Format(time.RFC3339),
 		"expires_at": q.ExpiresAt.UTC().Format(time.RFC3339),
 	}

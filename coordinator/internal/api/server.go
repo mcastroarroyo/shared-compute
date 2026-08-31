@@ -14,6 +14,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/catalog"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/connectdemo"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/council"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/manifest"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/marketplace"
@@ -45,6 +46,7 @@ type Server struct {
 	quotes   *marketplace.Store
 	signer   *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
 	auth     *auth.Auth       // nil unless Postgres + an OAuth client are configured
+	council  []council.Reviewer
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
@@ -67,6 +69,17 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		log.Info("account sign-in enabled", "providers", au.Providers())
 	}
 	hub := &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log, Auth: au}
+
+	reviewers := []council.Reviewer{
+		council.NewDeterministicReviewer("security_critic", "Chief Security Critic"),
+		council.NewDeterministicReviewer("node_safety", "Node and Provider Safety Guardian"),
+	}
+	if mr := council.NewModelReviewer("red_team", "Red Team Director",
+		cfg.CouncilModelAPI, cfg.CouncilModelKey, cfg.CouncilModelID); mr != nil {
+		reviewers = append(reviewers, mr)
+		log.Info("council model reviewer enabled", "api", cfg.CouncilModelAPI, "model", cfg.CouncilModelID)
+	}
+
 	return &Server{
 		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
 		rl:       ratelimit.New(cfg.RatePerMin),
@@ -77,6 +90,7 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		quotes:   marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
 		signer:   signer,
 		auth:     au,
+		council:  reviewers,
 	}
 }
 
