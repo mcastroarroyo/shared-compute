@@ -17,7 +17,7 @@ export function Nav() {
       <div className="nav-inner">
         <Link href="/" className="brand" aria-label="Ayni home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/ayni-logo.png" alt="Ayni" width={92} height={38} />
+          <img src="/ayni-logo.png" alt="Ayni" width={88} height={36} />
         </Link>
         <nav className="links">
           {links.map(([href, label, hideSm]) => (

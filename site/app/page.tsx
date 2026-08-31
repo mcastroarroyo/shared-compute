@@ -49,7 +49,7 @@ export default function Home() {
 
       <section className="wrap">
         <p className="kicker">What Ayni means</p>
-        <h2>Reciprocity, not charity</h2>
+        <h2>Reciprocity, not one-way giving</h2>
         <div className="prose">
           <p>
             In the Andes, <em>ayni</em> is a system of mutual aid: today I help
