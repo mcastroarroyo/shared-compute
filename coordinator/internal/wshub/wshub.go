@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/attest"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/auth"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/capability"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/crypto"
@@ -37,6 +38,7 @@ type Hub struct {
 	Reg   *registry.Registry
 	Job   *jobs.Manager
 	Store store.Store
+	Auth  *auth.Auth // nil unless account sign-in is configured
 	Log   *slog.Logger
 }
 
@@ -88,7 +90,9 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 		_ = c.send(protocol.RegisterAck{Type: protocol.TypeRegisterAck, OK: false, Error: "internal"})
 		return
 	}
-	if !h.Store.ValidateProviderToken(r.Context(), reg.RegistrationToken) {
+	envOK := h.Store.ValidateProviderToken(r.Context(), reg.RegistrationToken)
+	acctOK := h.Auth != nil && h.Auth.ValidProviderToken(r.Context(), reg.RegistrationToken)
+	if !envOK && !acctOK {
 		_ = c.send(protocol.RegisterAck{Type: protocol.TypeRegisterAck, OK: false, Error: "bad-token"})
 		_ = ws.Close(websocket.StatusPolicyViolation, "bad token")
 		return
@@ -131,6 +135,10 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Reg.Add(p)
 	metrics.ProvidersConnected.Inc()
+	if acctOK && h.Auth != nil {
+		h.Auth.LinkProviderDevice(r.Context(), reg.RegistrationToken,
+			base64.StdEncoding.EncodeToString(staticPK[:]))
+	}
 	if err := h.Store.UpsertProvider(r.Context(), store.ProviderRecord{
 		ProviderID: p.ID,
 		StaticPK:   reg.StaticPK,

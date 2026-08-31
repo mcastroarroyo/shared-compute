@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/auth"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/catalog"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/connectdemo"
@@ -43,6 +44,7 @@ type Server struct {
 	stripe   *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
 	quotes   *marketplace.Store
 	signer   *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
+	auth     *auth.Auth       // nil unless Postgres + an OAuth client are configured
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
@@ -53,15 +55,35 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 	} else if signer != nil {
 		log.Info("workload manifest signing enabled", "signer_id", signer.ID())
 	}
+	au, aerr := auth.New(context.Background(), cfg.DatabaseURL, auth.Config{
+		GitHubClientID: cfg.GitHubClientID, GitHubSecret: cfg.GitHubClientSecret,
+		GoogleClientID: cfg.GoogleClientID, GoogleSecret: cfg.GoogleClientSecret,
+		CallbackBase: cfg.AuthCallbackBase, AppURL: cfg.AppURL,
+		CookieDomain: cfg.CookieDomain, Secure: true,
+	}, st, log)
+	if aerr != nil {
+		log.Error("auth disabled", "err", aerr)
+	} else if au != nil {
+		log.Info("account sign-in enabled", "providers", au.Providers())
+	}
+	hub := &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log, Auth: au}
 	return &Server{
 		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
 		rl:       ratelimit.New(cfg.RatePerMin),
 		intakeRL: ratelimit.New(6), // public site forms: 6/min per IP
 		log:      log,
-		hub:      &wshub.Hub{Cfg: cfg, Reg: reg, Job: job, Store: st, Log: log},
+		hub:      hub,
 		stripe:   newStripeClient(cfg.StripeSecretKey),
 		quotes:   marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
 		signer:   signer,
+		auth:     au,
+	}
+}
+
+// Close releases resources the server owns (the auth DB pool).
+func (s *Server) Close() {
+	if s.auth != nil {
+		s.auth.Close()
 	}
 }
 
@@ -95,16 +117,28 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	s.mountCouncil(mux)
+	if s.auth != nil {
+		s.auth.Mount(mux)
+	}
 	s.mountAdmin(mux)
-	return withCORS(logRequests(s.log, mux))
+	return withCORS(s.cfg.AppURL, logRequests(s.log, mux))
 }
 
-// withCORS makes the API reachable from the browser console (a separate origin). It is
-// permissive because every endpoint already authenticates with a bearer token or admin
-// token; no cookies are used.
-func withCORS(next http.Handler) http.Handler {
+// withCORS makes the API reachable from the browser console and the signed-in
+// app (separate origins). Token-authenticated endpoints stay open to any origin;
+// the signed-in app origin additionally gets credentialed CORS so the session
+// cookie can travel.
+func withCORS(appURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		credentialed := origin != "" && (origin == appURL ||
+			strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:"))
+		if credentialed {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 		w.Header().Set("Vary", "Origin")
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -168,14 +202,20 @@ func (s *Server) handleManifestKey(w http.ResponseWriter, _ *http.Request) {
 // withAuth checks the consumer Bearer API key and stashes its stable id in the context.
 func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		key := bearer(r)
-		if key == "" {
-			writeError(w, http.StatusUnauthorized, "missing_api_key", "provide an API key via Authorization: Bearer")
-			return
+		var keyID string
+		var ok bool
+		if key := bearer(r); key != "" {
+			keyID, ok = s.store.ValidateConsumerKey(r.Context(), key)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "invalid_api_key", "the API key is not recognized")
+				return
+			}
+		} else if s.auth != nil {
+			// signed-in app: resolve the session cookie to the account's key
+			keyID, ok = s.auth.KeyIDForRequest(r)
 		}
-		keyID, ok := s.store.ValidateConsumerKey(r.Context(), key)
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "invalid_api_key", "the API key is not recognized")
+		if !ok || keyID == "" {
+			writeError(w, http.StatusUnauthorized, "missing_api_key", "provide an API key via Authorization: Bearer, or sign in")
 			return
 		}
 		if allowed, retry := s.rl.Allow(keyID); !allowed {

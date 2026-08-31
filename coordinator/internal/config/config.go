@@ -53,6 +53,16 @@ type Config struct {
 	// QuoteTTLSeconds is how long a workload quote stays acceptable. Default 600.
 	QuoteTTLSeconds int
 
+	// --- accounts / OAuth sign-in (app.ayni-ai.com). Postgres-only. ---
+	GitHubClientID, GitHubClientSecret string
+	GoogleClientID, GoogleClientSecret string
+	// AuthCallbackBase is where OAuth providers redirect back (this API's origin).
+	AuthCallbackBase string
+	// AppURL is the signed-in web app; OAuth ends with a redirect here.
+	AppURL string
+	// CookieDomain scopes the session cookie across api./app. subdomains.
+	CookieDomain string
+
 	// --- workload manifest signing (security v0.1) ---
 	// ManifestSigningKey is a base64 32-byte Ed25519 seed. When set, the
 	// coordinator attaches a signed Workload Manifest v1 to every job and serves
@@ -95,6 +105,13 @@ func Load() (Config, error) {
 		SpotEtaSlack:               getenvFloat("SC_SPOT_ETA_SLACK", 3),
 		ManifestSigningKey:         getenv("SC_MANIFEST_SIGNING_KEY", ""),
 		ManifestSignerID:           getenv("SC_MANIFEST_SIGNER_ID", "signer-v1"),
+		GitHubClientID:             getenv("SC_GITHUB_CLIENT_ID", ""),
+		GitHubClientSecret:         getenv("SC_GITHUB_CLIENT_SECRET", ""),
+		GoogleClientID:             getenv("SC_GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:         getenv("SC_GOOGLE_CLIENT_SECRET", ""),
+		AuthCallbackBase:           strings.TrimRight(getenv("SC_AUTH_CALLBACK_BASE", "https://api.ayni-ai.com"), "/"),
+		AppURL:                     strings.TrimRight(getenv("SC_APP_URL", "https://app.ayni-ai.com"), "/"),
+		CookieDomain:               getenv("SC_COOKIE_DOMAIN", ".ayni-ai.com"),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")
