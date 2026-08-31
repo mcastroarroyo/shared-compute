@@ -38,6 +38,26 @@ type workloadRequest struct {
 	Estimate    *workloadEstimateReq `json:"estimate"`
 	Redundancy  int                  `json:"redundancy"`
 	MaxPriceUSD float64              `json:"max_price_usd"`
+	Spot        bool                 `json:"spot"` // interruptible, best-effort, discounted
+}
+
+// spotPriceMult is the rate-card multiplier for a service class: on-demand uses
+// the configured multiplier as-is; spot also applies SpotPriceFactor, which
+// flows through to provider accruals too (both sides opt into the spot market).
+func (s *Server) spotPriceMult(spot bool) float64 {
+	if spot {
+		return s.cfg.PriceMultiplier * s.cfg.SpotPriceFactor
+	}
+	return s.cfg.PriceMultiplier
+}
+
+// spotSupply discounts aggregate throughput for a spot estimate — spot work runs
+// on whatever capacity on-demand traffic leaves free.
+func spotSupply(sup marketplace.Supply, spot bool) marketplace.Supply {
+	if spot {
+		sup.AggregateTPS *= marketplace.SpotSupplyFraction
+	}
+	return sup
 }
 
 func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +98,7 @@ func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
 		ModelClass: s.classOf(req.Model),
 		Tier:       tier,
 		Redundancy: red,
+		Spot:       req.Spot,
 	}
 	switch {
 	case hasItems:
@@ -109,9 +130,9 @@ func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	est := marketplace.EstimateWorkload(spec, sup)
+	est := marketplace.EstimateWorkload(spec, spotSupply(sup, req.Spot))
 	cost := pricing.QuoteWorkload(spec.ModelClass, tier, est.PromptTokens, est.CompletionTokens,
-		red, s.cfg.MarketplaceMargin, s.cfg.PriceMultiplier)
+		red, s.cfg.MarketplaceMargin, s.spotPriceMult(req.Spot))
 
 	if req.MaxPriceUSD > 0 && float64(cost.TotalMicros)/1e6 > req.MaxPriceUSD {
 		writeError(w, http.StatusConflict, "over_budget",
@@ -120,7 +141,7 @@ func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := s.quotes.Create(keyIDFrom(r.Context()), req.Model, spec, est, cost)
-	writeJSON(w, http.StatusCreated, renderQuote(q))
+	writeJSON(w, http.StatusCreated, s.renderQuote(q))
 }
 
 // handleQuotePreview is the PUBLIC, unauthenticated version of a workload quote:
@@ -136,6 +157,7 @@ func (s *Server) handleQuotePreview(w http.ResponseWriter, r *http.Request) {
 		Estimate   *workloadEstimateReq `json:"estimate"`
 		Redundancy int                  `json:"redundancy"`
 		Tier       string               `json:"tier"`
+		Spot       bool                 `json:"spot"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
@@ -181,28 +203,35 @@ func (s *Server) handleQuotePreview(w http.ResponseWriter, r *http.Request) {
 		ModelClass:          s.classOf(req.Model),
 		Tier:                tier,
 		Redundancy:          red,
+		Spot:                req.Spot,
 		EstimateCount:       req.Estimate.Count,
 		AvgPromptTokens:     req.Estimate.AvgPromptTokens,
 		AvgCompletionTokens: req.Estimate.AvgCompletionTokens,
 	}
-	est := marketplace.EstimateWorkload(spec, sup)
+	est := marketplace.EstimateWorkload(spec, spotSupply(sup, req.Spot))
 	cost := pricing.QuoteWorkload(spec.ModelClass, tier, est.PromptTokens, est.CompletionTokens,
-		red, s.cfg.MarketplaceMargin, s.cfg.PriceMultiplier)
+		red, s.cfg.MarketplaceMargin, s.spotPriceMult(req.Spot))
 
+	estOut := map[string]any{
+		"items":             est.Items,
+		"prompt_tokens":     est.PromptTokens,
+		"completion_tokens": est.CompletionTokens,
+		"eligible_nodes":    est.EligibleNodes,
+		"aggregate_tps":     est.AggregateTPS,
+		"eta_seconds":       est.ETASeconds,
+	}
+	if req.Spot {
+		estOut["eta_seconds_max"] = int64(float64(est.ETASeconds) * s.spotEtaSlack())
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"object":        "workload.preview",
 		"model":         req.Model,
+		"class":         spec.Class(),
+		"spot":          req.Spot,
 		"tier":          tier,
 		"redundancy":    red,
 		"supply_online": sup.Nodes > 0,
-		"estimate": map[string]any{
-			"items":             est.Items,
-			"prompt_tokens":     est.PromptTokens,
-			"completion_tokens": est.CompletionTokens,
-			"eligible_nodes":    est.EligibleNodes,
-			"aggregate_tps":     est.AggregateTPS,
-			"eta_seconds":       est.ETASeconds,
-		},
+		"estimate":      estOut,
 		"price": map[string]any{
 			"currency":  "usd",
 			"total_usd": round2usd(cost.TotalMicros),
@@ -223,7 +252,7 @@ func (s *Server) handleGetWorkload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such workload quote (it may have expired)")
 		return
 	}
-	writeJSON(w, http.StatusOK, renderQuote(q))
+	writeJSON(w, http.StatusOK, s.renderQuote(q))
 }
 
 func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
@@ -256,16 +285,22 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 
 	acu := s.acuByPK(r.Context())
 	created := time.Now().Unix()
+	// Spot runs at a reduced worker pool so it can't crowd out on-demand + chat.
+	concurrency := 0
+	if q.Spec.Spot {
+		concurrency = marketplace.SpotMaxConcurrency
+	}
 	merged := &batch.Summary{Providers: map[string]int{}}
 	var wallMS int64
 	for _, chunk := range chunkItems(q.Spec.Items, batch.MaxItems) {
 		sum, err := batch.Run(r.Context(), s.reg, func(ctx context.Context, prov *registry.Provider, rr relay.Request, onDelta func(string) error) (*relay.Result, error) {
 			return relay.ExecuteOn(ctx, s.deps(), prov, rr, onDelta)
 		}, chunk, batch.Options{
-			Model:   q.Model,
-			MinTier: q.Spec.Tier,
-			HWClass: s.hwClassOf(q.Model),
-			ACUByPK: acu,
+			Model:       q.Model,
+			MinTier:     q.Spec.Tier,
+			HWClass:     s.hwClassOf(q.Model),
+			ACUByPK:     acu,
+			Concurrency: concurrency,
 		})
 		if err != nil {
 			mapRelayErr(w, err)
@@ -279,8 +314,10 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 	merged.WallMS = wallMS
 	merged.Fanout = len(merged.Providers)
 
-	// Record usage + provider earnings per sub-job, then settle the consumer's
-	// balance ONCE at the quoted price (not the metered sum).
+	// Record usage + provider earnings per sub-job (spot accrues at the spot rate,
+	// same factor the consumer was quoted), then settle the consumer's balance
+	// ONCE at the quoted price (not the metered sum).
+	priceMult := s.spotPriceMult(q.Spec.Spot)
 	for _, it := range merged.Items {
 		if it.ErrCode != "" {
 			continue
@@ -289,7 +326,7 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 			Usage: it.Usage, FinishReason: it.FinishReason,
 			ProviderID: it.ProviderID, ProviderPK: it.ProviderPK,
 			TrustTier: it.TrustTier, JobID: it.JobID,
-		})
+		}, priceMult)
 	}
 	charge := q.Cost.TotalMicros
 	if merged.OK == 0 {
@@ -306,6 +343,7 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 		"id":          q.ID,
 		"object":      "workload.result",
 		"model":       q.Model,
+		"class":       q.Spec.Class(),
 		"created":     created,
 		"quoted_usd":  round2usd(q.Cost.TotalMicros),
 		"charged_usd": round2usd(charge),
@@ -321,28 +359,34 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 
 // --- helpers ---
 
-func renderQuote(q *marketplace.Quote) map[string]any {
+func (s *Server) renderQuote(q *marketplace.Quote) map[string]any {
 	status := "quoted"
 	if q.Accepted {
 		status = "accepted"
 	}
 	c := q.Cost
+	est := map[string]any{
+		"items":             q.Estimate.Items,
+		"prompt_tokens":     q.Estimate.PromptTokens,
+		"completion_tokens": q.Estimate.CompletionTokens,
+		"eligible_nodes":    q.Estimate.EligibleNodes,
+		"aggregate_tps":     q.Estimate.AggregateTPS,
+		"eta_seconds":       q.Estimate.ETASeconds,
+	}
+	if q.Spec.Spot {
+		est["eta_seconds_max"] = int64(float64(q.Estimate.ETASeconds) * s.spotEtaSlack())
+	}
 	body := map[string]any{
 		"id":         q.ID,
 		"object":     "workload.quote",
 		"model":      q.Model,
 		"status":     status,
+		"class":      q.Spec.Class(),
+		"spot":       q.Spec.Spot,
 		"tier":       q.Spec.Tier,
 		"redundancy": q.Spec.Redundancy,
 		"runnable":   q.Spec.Runnable(),
-		"estimate": map[string]any{
-			"items":             q.Estimate.Items,
-			"prompt_tokens":     q.Estimate.PromptTokens,
-			"completion_tokens": q.Estimate.CompletionTokens,
-			"eligible_nodes":    q.Estimate.EligibleNodes,
-			"aggregate_tps":     q.Estimate.AggregateTPS,
-			"eta_seconds":       q.Estimate.ETASeconds,
-		},
+		"estimate":   est,
 		"price": map[string]any{
 			"currency":  "usd",
 			"total_usd": round2usd(c.TotalMicros),
@@ -357,10 +401,21 @@ func renderQuote(q *marketplace.Quote) map[string]any {
 		"created_at": q.CreatedAt.UTC().Format(time.RFC3339),
 		"expires_at": q.ExpiresAt.UTC().Format(time.RFC3339),
 	}
+	if q.Spec.Spot {
+		body["note"] = "spot: best-effort completion time, may be interrupted and requeued; priced at " +
+			strconv.Itoa(int(s.cfg.SpotPriceFactor*100)) + "% of on-demand"
+	}
 	if q.Spec.Runnable() {
 		body["accept_url"] = "/v1/workloads/" + q.ID + "/accept"
 	}
 	return body
+}
+
+func (s *Server) spotEtaSlack() float64 {
+	if s.cfg.SpotEtaSlack > 1 {
+		return s.cfg.SpotEtaSlack
+	}
+	return 3
 }
 
 // supplyFor is the slice of connected supply that could take this workload:

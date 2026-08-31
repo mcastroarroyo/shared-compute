@@ -138,7 +138,7 @@ func mapRelayErr(w http.ResponseWriter, err error) {
 // meter is the pay-as-you-go path (chat, standalone /v1/batch): record the job
 // and debit the consumer's prepaid balance by its gross.
 func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
-	q := s.recordJob(ctx, model, res)
+	q := s.recordJob(ctx, model, res, s.cfg.PriceMultiplier)
 	// Debit the consumer's prepaid balance (allowed to go slightly negative;
 	// the pre-flight gate blocks the next request).
 	if e := s.store.AddCredit(context.WithoutCancel(ctx), keyIDFrom(ctx),
@@ -148,9 +148,11 @@ func (s *Server) meter(ctx context.Context, model string, res *relay.Result) {
 }
 
 // recordJob writes the usage event + provider earning accrual for one completed
-// job and returns its per-job quote. It does NOT touch consumer credit — callers
-// that pre-quoted a whole workload settle the balance once, elsewhere.
-func (s *Server) recordJob(ctx context.Context, model string, res *relay.Result) pricing.Quote {
+// job and returns its per-job quote. priceMult scales the rate card (pass
+// s.cfg.PriceMultiplier for on-demand; multiply by the spot factor for spot). It
+// does NOT touch consumer credit — callers that pre-quoted a whole workload
+// settle the balance once, elsewhere.
+func (s *Server) recordJob(ctx context.Context, model string, res *relay.Result, priceMult float64) pricing.Quote {
 	metrics.JobsTotal.WithLabelValues("ok").Inc()
 	metrics.TokensTotal.WithLabelValues("prompt").Add(float64(res.Usage.PromptTokens))
 	metrics.TokensTotal.WithLabelValues("completion").Add(float64(res.Usage.CompletionTokens))
@@ -173,8 +175,11 @@ func (s *Server) recordJob(ctx context.Context, model string, res *relay.Result)
 	if s.cat != nil {
 		modelClass = s.cat.ClassOf(model)
 	}
+	if priceMult <= 0 {
+		priceMult = s.cfg.PriceMultiplier
+	}
 	q := pricing.QuoteJob(modelClass, res.TrustTier,
-		res.Usage.PromptTokens, res.Usage.CompletionTokens, s.cfg.PriceMultiplier, 1.0)
+		res.Usage.PromptTokens, res.Usage.CompletionTokens, priceMult, 1.0)
 	if e := s.store.RecordEarning(context.WithoutCancel(ctx), store.EarningEvent{
 		ProviderID:     res.ProviderID,
 		StaticPK:       res.ProviderPK,

@@ -29,6 +29,14 @@ const (
 	// ReferenceNodeTPS is one mid-range phone's sustained tok/s — the fallback
 	// throughput for a preview quote when no matching supply is online.
 	ReferenceNodeTPS = 12.0
+
+	// --- spot tier (M10.5) ---
+	// SpotSupplyFraction is the share of aggregate throughput a spot workload is
+	// estimated against — it runs on whatever on-demand traffic leaves free.
+	SpotSupplyFraction = 0.5
+	// SpotMaxConcurrency caps a spot batch's worker pool so it can't monopolise
+	// the fleet ahead of on-demand work.
+	SpotMaxConcurrency = 4
 )
 
 // Spec is a validated workload request. Exactly one of Items or EstimateCount is
@@ -38,12 +46,21 @@ type Spec struct {
 	ModelClass string
 	Tier       string
 	Redundancy int
+	Spot       bool // interruptible, best-effort completion, discounted
 
 	Items []batch.Item // explicit work; empty => estimate-only quote
 
 	EstimateCount       int // used when Items is empty
 	AvgPromptTokens     int
 	AvgCompletionTokens int
+}
+
+// Class is the service-class label ("spot" or "on_demand").
+func (s Spec) Class() string {
+	if s.Spot {
+		return "spot"
+	}
+	return "on_demand"
 }
 
 // Runnable reports whether Accept can execute this workload (it has real items).

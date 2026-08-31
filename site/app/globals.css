@@ -175,6 +175,12 @@ section:first-of-type { border-top: 0; }
 .wbox-legend b { color: var(--ink); font-weight: 700; margin-left: auto; }
 .wbox-legend .dot, .wbox-out .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: none; }
 .wbox-note { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+.wbox-spot {
+  display: flex; gap: 9px; align-items: flex-start; font-size: 0.82rem;
+  font-weight: 500; color: var(--muted); cursor: pointer; line-height: 1.45;
+}
+.wbox-spot input { width: 16px; height: 16px; margin-top: 2px; flex: none; accent-color: var(--teal); }
+.wbox-spot b { color: var(--ink); }
 
 @media (max-width: 820px) {
   .wbox { grid-template-columns: 1fr; }

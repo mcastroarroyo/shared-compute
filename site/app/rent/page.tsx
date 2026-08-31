@@ -65,6 +65,11 @@ curl -X POST https://api.ayni-ai.com/v1/workloads/wl_.../accept \\
             Prefer to place the batch yourself? <code>POST /v1/batch</code> takes the
             same items, fans them out immediately, and meters pay-as-you-go.
           </p>
+          <p>
+            Not in a hurry? Add <code>&quot;spot&quot;: true</code>. Spot workloads run on
+            whatever capacity on-demand traffic leaves free — priced at 60% of on-demand,
+            with a wider completion-time band, and Ayni may interrupt and requeue them.
+          </p>
         </div>
       </section>
 

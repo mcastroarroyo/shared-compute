@@ -34,6 +34,7 @@ export function WorkloadBox() {
   const [pin, setPin] = useState(600);
   const [pout, setPout] = useState(160);
   const [redundancy, setRedundancy] = useState(1);
+  const [spot, setSpot] = useState(false);
   const [quote, setQuote] = useState<QuotePreview | null>(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,11 +47,12 @@ export function WorkloadBox() {
       model,
       estimate: { count, avg_prompt_tokens: pin, avg_completion_tokens: pout },
       redundancy,
+      spot,
     })
       .then((q) => setQuote(q))
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : "Could not reach the coordinator."))
       .finally(() => setLoading(false));
-  }, [model, count, pin, pout, redundancy]);
+  }, [model, count, pin, pout, redundancy, spot]);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -143,6 +145,14 @@ export function WorkloadBox() {
             />
           </label>
         </div>
+
+        <label className="wbox-spot">
+          <input type="checkbox" checked={spot} onChange={(e) => setSpot(e.target.checked)} />
+          <span>
+            <b>Spot</b> — cheaper, best-effort. Runs on leftover capacity and may be
+            interrupted and requeued.
+          </span>
+        </label>
       </div>
 
       <div className="wbox-out" aria-live="polite">
@@ -152,13 +162,19 @@ export function WorkloadBox() {
           <>
             <div className="wbox-headline">
               <div>
-                <span className="wbox-k">Quoted price</span>
+                <span className="wbox-k">{spot ? "Spot price" : "Quoted price"}</span>
                 <span className="wbox-price">{usd(total)}</span>
               </div>
               <div>
                 <span className="wbox-k">Est. completion</span>
                 <span className="wbox-eta">
-                  {quote ? humanizeETA(quote.estimate.eta_seconds) : "—"}
+                  {!quote
+                    ? "—"
+                    : quote.estimate.eta_seconds_max
+                      ? `${humanizeETA(quote.estimate.eta_seconds)}–${humanizeETA(
+                          quote.estimate.eta_seconds_max
+                        )}`
+                      : humanizeETA(quote.estimate.eta_seconds)}
                 </span>
               </div>
             </div>
@@ -193,8 +209,11 @@ export function WorkloadBox() {
             </p>
             <p className="wbox-note">
               ~{fmt(quote?.estimate.prompt_tokens)} input + ~
-              {fmt(quote?.estimate.completion_tokens)} output tokens. Price is the real
-              coordinator quote; accepting it requires an API key.
+              {fmt(quote?.estimate.completion_tokens)} output tokens.
+              {spot
+                ? " Spot: best-effort completion, may be interrupted and requeued."
+                : ""}{" "}
+              Price is the real coordinator quote; accepting it requires an API key.
             </p>
           </>
         )}

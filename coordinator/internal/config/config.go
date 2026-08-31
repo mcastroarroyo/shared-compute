@@ -52,6 +52,15 @@ type Config struct {
 	MarketplaceMargin float64
 	// QuoteTTLSeconds is how long a workload quote stays acceptable. Default 600.
 	QuoteTTLSeconds int
+
+	// --- spot tier (M10.5) ---
+	// SpotPriceFactor scales the whole quote (and provider accruals) for a spot
+	// workload: cheaper for the buyer, less for the seller, both interruptible.
+	// Default 0.6.
+	SpotPriceFactor float64
+	// SpotEtaSlack multiplies the optimistic ETA to give the upper bound of the
+	// spot completion-time band. Default 3.
+	SpotEtaSlack float64
 }
 
 func Load() (Config, error) {
@@ -74,6 +83,8 @@ func Load() (Config, error) {
 		PriceMultiplier:            getenvFloat("SC_PRICE_MULTIPLIER", 1.0),
 		MarketplaceMargin:          getenvFloat("SC_MARKETPLACE_MARGIN", 0.30),
 		QuoteTTLSeconds:            getenvInt("SC_QUOTE_TTL_SECONDS", 600),
+		SpotPriceFactor:            getenvFloat("SC_SPOT_PRICE_FACTOR", 0.6),
+		SpotEtaSlack:               getenvFloat("SC_SPOT_ETA_SLACK", 3),
 	}
 	if len(c.ConsumerAPIKeys) == 0 {
 		return c, fmt.Errorf("SC_CONSUMER_API_KEYS must not be empty")

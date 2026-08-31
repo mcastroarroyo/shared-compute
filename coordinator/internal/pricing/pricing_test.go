@@ -85,3 +85,24 @@ func TestQuoteWorkloadFloor(t *testing.T) {
 		t.Fatalf("tiny workload total = %d, want floor %d", c.TotalMicros, MinWorkloadMicros)
 	}
 }
+
+func TestQuoteWorkloadSpotFactorScalesEverything(t *testing.T) {
+	// Spot is modelled as a single rate-card multiplier (0.6): every component,
+	// provider pay included, scales together.
+	on := QuoteWorkload("SMALL", "community", 1_000_000, 1_000_000, 1, 0.30, 1.0)
+	spot := QuoteWorkload("SMALL", "community", 1_000_000, 1_000_000, 1, 0.30, 0.6)
+
+	approx := func(got, want int64) bool {
+		d := got - want
+		if d < 0 {
+			d = -d
+		}
+		return d <= want/50+1 // within 2%
+	}
+	if !approx(spot.ComputeMicros, int64(float64(on.ComputeMicros)*0.6)) {
+		t.Fatalf("spot compute %d, want ~60%% of %d", spot.ComputeMicros, on.ComputeMicros)
+	}
+	if !approx(spot.TotalMicros, int64(float64(on.TotalMicros)*0.6)) {
+		t.Fatalf("spot total %d, want ~60%% of %d", spot.TotalMicros, on.TotalMicros)
+	}
+}

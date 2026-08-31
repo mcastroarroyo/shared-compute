@@ -35,7 +35,8 @@ Tier 0 is built fully now. Every trust seam is a trait/interface so 1 and 2 slot
 | M10.2 | done — `POST /v1/batch` fan-out / aggregate execution primitive | live |
 | M10.3 | done — `POST /v1/workloads` quote engine (estimate → price + ETA → accept → run) | live |
 | M10.4 | done — site reframe + public `POST /v1/quote` live-quote box on the landing page | `ayni-ai.com` |
-| M7–M8, M10.5 | not started | — |
+| M10.5 | done — spot tier (`"spot": true` on quote/workload: ~60% price, wider ETA band, capped concurrency) | live |
+| M7–M8 | not started | — |
 
 ## Milestones
 
@@ -126,7 +127,14 @@ Reframe from "rent a phone for X hours" to an intelligent hybrid compute marketp
   rate-limited `POST /v1/quote` (estimate-only, nothing stored/run) and shows the real
   price, humanized ETA, cost breakdown, and live supply status. `/rent` reframed to "Run a
   workload" with the `/v1/workloads` + `/v1/batch` API.
-- **M10.5 — Spot tier.** Interruptible, cheapest, best-effort completion time.
+- **M10.5 — Spot tier (done).** `"spot": true` on `/v1/quote` and `/v1/workloads` — a
+  service-class axis orthogonal to the hardware trust tier. Priced through a single
+  rate-card multiplier (`SC_SPOT_PRICE_FACTOR`, default 0.6) that flows to provider
+  accruals too: cheaper for the buyer, less for the seller, both interruptible. ETA is a
+  band — the estimate assumes half the aggregate throughput (`SpotSupplyFraction`) and the
+  response adds `eta_seconds_max = eta_seconds x SC_SPOT_ETA_SLACK` (default 3). On accept,
+  a spot batch runs at a capped worker pool (`SpotMaxConcurrency = 4`) so it can't crowd
+  out on-demand + chat. `WorkloadBox` has a Spot toggle.
 
 **Done when:** submit one Llama workload → Ayni quotes it → accept → it fans out across
 real phones → results returned in order → providers accrue earnings.

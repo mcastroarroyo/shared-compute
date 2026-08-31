@@ -45,6 +45,8 @@ export function submitInitiative(input: {
 export type QuotePreview = {
   object: "workload.preview";
   model: string;
+  class: "spot" | "on_demand";
+  spot: boolean;
   tier: string;
   redundancy: number;
   supply_online: boolean;
@@ -55,6 +57,7 @@ export type QuotePreview = {
     eligible_nodes: number;
     aggregate_tps: number;
     eta_seconds: number;
+    eta_seconds_max?: number;
   };
   price: {
     currency: string;
@@ -74,6 +77,7 @@ export function quotePreview(input: {
   model: string;
   estimate: { count: number; avg_prompt_tokens: number; avg_completion_tokens: number };
   redundancy?: number;
+  spot?: boolean;
 }): Promise<QuotePreview> {
   return post("/v1/quote", input) as Promise<QuotePreview>;
 }
