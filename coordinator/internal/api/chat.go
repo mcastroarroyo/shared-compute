@@ -116,6 +116,8 @@ func relayErrInfo(err error) (label string, status int, code, msg string) {
 		return "caps_unmet", http.StatusServiceUnavailable, code, msg
 	case errors.Is(err, relay.ErrProviderGone):
 		return "provider_gone", http.StatusBadGateway, code, msg
+	case errors.Is(err, relay.ErrInvalidProviderResult):
+		return "invalid_provider_result", http.StatusBadGateway, code, msg
 	case errors.Is(err, relay.ErrDeadline):
 		return "deadline", http.StatusGatewayTimeout, code, msg
 	case errors.Is(err, context.Canceled):
@@ -181,6 +183,7 @@ func (s *Server) recordJob(ctx context.Context, model string, res *relay.Result,
 	q := pricing.QuoteJob(modelClass, res.TrustTier,
 		res.Usage.PromptTokens, res.Usage.CompletionTokens, priceMult, 1.0)
 	if e := s.store.RecordEarning(context.WithoutCancel(ctx), store.EarningEvent{
+		JobID:          res.JobID,
 		ProviderID:     res.ProviderID,
 		StaticPK:       res.ProviderPK,
 		KeyID:          keyIDFrom(ctx),

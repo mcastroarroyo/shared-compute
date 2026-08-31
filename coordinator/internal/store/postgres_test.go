@@ -89,9 +89,10 @@ func TestPGUpsertAndUsage(t *testing.T) {
 	}
 
 	// Earnings shadow ledger.
-	for i := 0; i < 2; i++ {
+	for _, jobID := range []string{"job-dbtest-a", "job-dbtest-b"} {
 		if err := pg.RecordEarning(ctx, EarningEvent{
-			ProviderID: pid, KeyID: "key_dbtest", Model: "m", ModelClass: "SMALL",
+			JobID: jobID, ProviderID: pid, StaticPK: "test-static-pk",
+			KeyID: "key_dbtest", Model: "m", ModelClass: "SMALL",
 			Tier: "device_attested", GrossMicros: 280, ProviderMicros: 196,
 		}); err != nil {
 			t.Fatal(err)

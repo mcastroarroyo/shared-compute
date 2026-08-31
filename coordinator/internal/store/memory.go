@@ -15,23 +15,25 @@ import (
 // Mem is the env-configured, non-durable store. Keys and tokens come from config; usage
 // events are counted but not retained. Keys created at runtime live only until restart.
 type Mem struct {
-	mu          sync.Mutex
-	keys        map[string]string // raw key -> stable id
-	keyInfo     map[string]KeyInfo
-	tokens      map[string]struct{}
-	rawByID     map[string]string // id -> raw key (Mem only, so disable works)
-	providers   map[string]ProviderRecord
-	usageRows   []UsageRow
-	earningRows []EarningRow
-	waitlist    []WaitlistEntry
-	proposals   []Proposal
-	credits     map[string]int64         // key_id -> micros
-	topupRefs   map[string]struct{}      // idempotency for topups
-	payoutAccts map[string]PayoutAccount // static_pk -> account
-	nodeCaps    map[string]NodeCapabilityRow
-	accrued     map[string]*ProviderAccrual
-	nextPayout  int64
-	usage       atomic.Int64
+	mu            sync.Mutex
+	keys          map[string]string // raw key -> stable id
+	keyInfo       map[string]KeyInfo
+	tokens        map[string]struct{}
+	rawByID       map[string]string // id -> raw key (Mem only, so disable works)
+	providers     map[string]ProviderRecord
+	usageRows     []UsageRow
+	earningRows   []EarningRow
+	earningEvents map[string]struct{} // "job_id\x00static_pk" settlement idempotency
+	waitlist      []WaitlistEntry
+	proposals     []Proposal
+	credits       map[string]int64         // key_id -> micros
+	topupRefs     map[string]struct{}      // idempotency for topups
+	debitJobs     map[string]struct{}      // idempotency for job debits
+	payoutAccts   map[string]PayoutAccount // static_pk -> account
+	nodeCaps      map[string]NodeCapabilityRow
+	accrued       map[string]*ProviderAccrual
+	nextPayout    int64
+	usage         atomic.Int64
 }
 
 // NewMem builds an in-memory store from the accepted consumer keys and provider tokens.
@@ -45,16 +47,18 @@ func NewMem(consumerKeys, providerTokens map[string]struct{}) *Mem {
 		toks[t] = struct{}{}
 	}
 	return &Mem{
-		keys:        keys,
-		keyInfo:     map[string]KeyInfo{},
-		tokens:      toks,
-		rawByID:     map[string]string{},
-		providers:   map[string]ProviderRecord{},
-		credits:     map[string]int64{},
-		topupRefs:   map[string]struct{}{},
-		payoutAccts: map[string]PayoutAccount{},
-		nodeCaps:    map[string]NodeCapabilityRow{},
-		accrued:     map[string]*ProviderAccrual{},
+		keys:          keys,
+		keyInfo:       map[string]KeyInfo{},
+		tokens:        toks,
+		rawByID:       map[string]string{},
+		providers:     map[string]ProviderRecord{},
+		earningEvents: map[string]struct{}{},
+		credits:       map[string]int64{},
+		topupRefs:     map[string]struct{}{},
+		debitJobs:     map[string]struct{}{},
+		payoutAccts:   map[string]PayoutAccount{},
+		nodeCaps:      map[string]NodeCapabilityRow{},
+		accrued:       map[string]*ProviderAccrual{},
 	}
 }
 
@@ -160,8 +164,16 @@ func (m *Mem) RecordUsage(_ context.Context, ev UsageEvent) error {
 func (m *Mem) UsageCount() int64 { return m.usage.Load() }
 
 func (m *Mem) RecordEarning(_ context.Context, ev EarningEvent) error {
+	if ev.JobID == "" || ev.StaticPK == "" {
+		return fmt.Errorf("earning event requires job_id and static_pk")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	settlementKey := ev.JobID + "\x00" + ev.StaticPK
+	if _, seen := m.earningEvents[settlementKey]; seen {
+		return nil // exactly one accrual per (job_id, static_pk)
+	}
+	m.earningEvents[settlementKey] = struct{}{}
 	for i := range m.earningRows {
 		if m.earningRows[i].ProviderID == ev.ProviderID {
 			m.earningRows[i].Jobs++
@@ -192,7 +204,7 @@ func (m *Mem) CreditBalance(_ context.Context, keyID string) (int64, error) {
 	return m.credits[keyID], nil
 }
 
-func (m *Mem) AddCredit(_ context.Context, keyID string, deltaMicros int64, reason, stripeRef, _ string) error {
+func (m *Mem) AddCredit(_ context.Context, keyID string, deltaMicros int64, reason, stripeRef, jobID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if reason == "topup" && stripeRef != "" {
@@ -200,6 +212,12 @@ func (m *Mem) AddCredit(_ context.Context, keyID string, deltaMicros int64, reas
 			return nil
 		}
 		m.topupRefs[stripeRef] = struct{}{}
+	}
+	if reason == "debit" && jobID != "" {
+		if _, seen := m.debitJobs[jobID]; seen {
+			return nil // one debit per job
+		}
+		m.debitJobs[jobID] = struct{}{}
 	}
 	m.credits[keyID] += deltaMicros
 	return nil

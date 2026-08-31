@@ -39,6 +39,19 @@ func (p *PG) AddCredit(ctx context.Context, keyID string, deltaMicros int64, rea
 			return tx.Commit(ct)
 		}
 	}
+	// Idempotent job debits: one 'debit' row per job_id (migration 0006 also has
+	// a partial unique index as the backstop).
+	if reason == "debit" && jobID != "" {
+		var n int
+		if err := tx.QueryRow(ct,
+			`SELECT count(*) FROM credit_ledger WHERE reason='debit' AND job_id=$1`, jobID,
+		).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			return tx.Commit(ct)
+		}
+	}
 
 	if _, err := tx.Exec(ct, `
 		INSERT INTO billing_accounts (key_id, credit_micros)

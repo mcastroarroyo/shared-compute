@@ -252,7 +252,7 @@ func (h *Hub) deliver(p *registry.Provider, frame protocol.Frame, kind jobs.Kind
 	if err := json.Unmarshal(frame.Raw, &probe); err != nil || probe.JobID == "" {
 		return
 	}
-	if !h.Job.Deliver(probe.JobID, jobs.Event{Kind: kind, Raw: frame.Raw}) {
+	if !h.Job.Deliver(probe.JobID, p.ID, jobs.Event{Kind: kind, Raw: frame.Raw}) {
 		h.Log.Debug("job frame for unknown/slow job", "provider_id", p.ID, "job_id", probe.JobID)
 	}
 }
