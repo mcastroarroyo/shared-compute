@@ -80,6 +80,10 @@ type Config struct {
 	// spot completion-time band. Default 3.
 	SpotEtaSlack float64
 
+	// DemoEnabled turns on the public, no-sign-up investor demo endpoints
+	// (POST /v1/demo/summarize, GET /v1/demo/last-job). Off by default.
+	DemoEnabled bool
+
 	// --- Ayni Council workload review ---
 	// One real model seat on the Council that reviews each workload before it is
 	// quoted. Empty -> only the deterministic reviewers run.
@@ -119,6 +123,7 @@ func Load() (Config, error) {
 		AuthCallbackBase:           strings.TrimRight(getenv("SC_AUTH_CALLBACK_BASE", "https://api.ayni-ai.com"), "/"),
 		AppURL:                     strings.TrimRight(getenv("SC_APP_URL", "https://app.ayni-ai.com"), "/"),
 		CookieDomain:               getenv("SC_COOKIE_DOMAIN", ".ayni-ai.com"),
+		DemoEnabled:                getenv("SC_DEMO_ENABLED", "") == "1",
 		CouncilModelAPI:            getenv("SC_COUNCIL_MODEL_API", ""),
 		CouncilModelKey:            getenv("SC_COUNCIL_MODEL_KEY", ""),
 		CouncilModelID:             getenv("SC_COUNCIL_MODEL_ID", ""),

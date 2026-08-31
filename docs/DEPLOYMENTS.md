@@ -6,6 +6,7 @@
 | Model registry | https://models.ayni-ai.com | Cloudflare R2 bucket `models` |
 | Marketing site | https://ayni-ai.com | Cloudflare Pages (root dir `site`) |
 | Signed-in app | https://app.ayni-ai.com | Cloudflare Pages `ayni-app` (root dir `webapp`) |
+| Investor demo | https://demo.ayni-ai.com | Cloudflare Pages `ayni-demo` (root dir `demo`); needs `SC_DEMO_ENABLED=1` + a demo node |
 | Operator console | https://ayni-console.pages.dev | Cloudflare Pages `ayni-console` (auto-deploy on push to `main`) |
 | Provider binaries | github releases `provider-latest` | `release-provider` workflow (rolling + per-tag) |
 | Source | github.com/mcastroarroyo/shared-compute (private) | GitHub Actions CI on every push |
@@ -34,6 +35,16 @@ Cloudflare Pages project **`ayni-app`**, connected to the GitHub repo:
 Full walkthrough of the first customer cycle: [`LIVE-CYCLE.md`](LIVE-CYCLE.md).
 The GitHub OAuth app's callback URL must be exactly
 `https://api.ayni-ai.com/auth/github/callback`.
+
+## Investor demo — `demo.ayni-ai.com`
+
+One-link, no-sign-up page that runs the whole loop for a fixed workload. Cloudflare
+Pages project **`ayni-demo`**, root directory `demo`, output `out`, env
+`NEXT_PUBLIC_API_URL=https://api.ayni-ai.com` (+ optional `NEXT_PUBLIC_CALENDAR_URL`).
+Coordinator: `SC_DEMO_ENABLED=1` unlocks `POST /v1/demo/summarize` +
+`GET /v1/demo/last-job` (public, rate-limited, billed to nobody). Keep a demo
+provider online — [`infra/demo-provider/`](../infra/demo-provider/). Details:
+[`demo/README.md`](../demo/README.md).
 
 ## Console — M4
 

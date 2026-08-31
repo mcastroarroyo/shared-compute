@@ -1,0 +1,24 @@
+# Always-on capacity for demo.ayni-ai.com. One or two of these keeps every
+# "Run the demo" click a live, encrypted job.
+#
+#   cp .env.example .env   # put a real SC_REGISTRATION_TOKEN in it
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# A ~2 vCPU / 4 GB VPS runs the 0.5B model comfortably. Scale with:
+#   docker compose up -d --scale provider=2
+
+services:
+  provider:
+    build: .
+    restart: always
+    environment:
+      SC_REGISTRATION_TOKEN: ${SC_REGISTRATION_TOKEN:?put a demo provider token in .env}
+      SC_COORDINATOR_URL: ${SC_COORDINATOR_URL:-wss://api.ayni-ai.com/ws/provider}
+      SC_API: ${SC_API:-https://api.ayni-ai.com}
+    volumes:
+      - state:/opt/ayni/state
+    stop_grace_period: 20s
+
+volumes:
+  state:

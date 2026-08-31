@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dir: [site, webapp]
+        dir: [site, webapp, demo]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

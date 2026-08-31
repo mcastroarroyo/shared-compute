@@ -40,6 +40,8 @@ type Server struct {
 	cat      *catalog.Catalog
 	rl       *ratelimit.Limiter
 	intakeRL *ratelimit.Limiter
+	demoRL   *ratelimit.Limiter
+	demo     *demoState
 	log      *slog.Logger
 	hub      *wshub.Hub
 	stripe   *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
@@ -84,6 +86,8 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
 		rl:       ratelimit.New(cfg.RatePerMin),
 		intakeRL: ratelimit.New(6), // public site forms: 6/min per IP
+		demoRL:   ratelimit.New(3), // investor demo: 3 runs/min per IP
+		demo:     &demoState{},
 		log:      log,
 		hub:      hub,
 		stripe:   newStripeClient(cfg.StripeSecretKey),
@@ -111,6 +115,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
 	mux.Handle("POST /v1/batch", instrument("v1_batch", s.withAuth(s.handleBatch)))
 	mux.Handle("POST /v1/quote", instrument("v1_quote", http.HandlerFunc(s.handleQuotePreview)))
+	mux.Handle("POST /v1/demo/summarize", instrument("v1_demo_summarize", http.HandlerFunc(s.handleDemoSummarize)))
+	mux.Handle("GET /v1/demo/last-job", instrument("v1_demo_last_job", http.HandlerFunc(s.handleDemoLastJob)))
 	mux.Handle("POST /v1/workloads", instrument("v1_workloads_create", s.withAuth(s.handleCreateWorkload)))
 	mux.Handle("GET /v1/workloads/{id}", instrument("v1_workloads_get", s.withAuth(s.handleGetWorkload)))
 	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.withAuth(s.handleAcceptWorkload)))
