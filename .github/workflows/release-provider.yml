@@ -51,15 +51,24 @@ jobs:
         with:
           merge-multiple: true
           path: dist
-      - name: Publish / update the release
+      - name: Publish / update the release(s)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME:-provider-latest}"
-          [ "${{ github.event_name }}" = "workflow_dispatch" ] && TAG="provider-latest"
-          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
-          gh release create "$TAG" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "provider-daemon ($TAG)" \
-            --notes "Prebuilt provider-daemon with embedded llama.cpp. Used by the Share your computer installer." \
-            --latest=false
+          notes="Prebuilt provider-daemon with embedded llama.cpp. Used by the Share your computer installer."
+          publish() {
+            local tag="$1" extra="$2"
+            gh release delete "$tag" --yes $extra --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+            gh release create "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "provider-daemon ($tag)" \
+              --notes "$notes" \
+              --latest=false
+          }
+          # The installer always pulls from the rolling `provider-latest` release,
+          # so every run refreshes it (git tag recreated to match). A version tag
+          # also gets its own release, leaving the immutable git tag in place.
+          publish provider-latest --cleanup-tag
+          case "${GITHUB_REF_NAME:-}" in
+            provider-v*) publish "$GITHUB_REF_NAME" "" ;;
+          esac

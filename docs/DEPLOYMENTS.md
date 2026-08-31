@@ -4,7 +4,10 @@
 |---|---|---|
 | Coordinator API | https://api.ayni-ai.com | Fly.io `ayni-coordinator` + Fly Postgres |
 | Model registry | https://models.ayni-ai.com | Cloudflare R2 bucket `models` |
+| Marketing site | https://ayni-ai.com | Cloudflare Pages (root dir `site`) |
+| Signed-in app | https://app.ayni-ai.com | Cloudflare Pages `ayni-app` (root dir `webapp`) |
 | Operator console | https://ayni-console.pages.dev | Cloudflare Pages `ayni-console` (auto-deploy on push to `main`) |
+| Provider binaries | github releases `provider-latest` | `release-provider` workflow (rolling + per-tag) |
 | Source | github.com/mcastroarroyo/shared-compute (private) | GitHub Actions CI on every push |
 
 ## Android provider — M5 (verified)
@@ -17,6 +20,20 @@ encrypted `mock-echo` completion routed to it. Distribution to Google Play (org 
 
 Note: the workspace TLS roots were switched from `rustls-tls-native-roots` to
 `rustls-tls-webpki-roots` — native-roots has no usable trust store on Android.
+
+## Signed-in app — `app.ayni-ai.com`
+
+Cloudflare Pages project **`ayni-app`**, connected to the GitHub repo:
+- Root directory `webapp`, framework Next.js (Static HTML Export), build `npm run build`, output `out`
+- Env: `NEXT_PUBLIC_API_URL = https://api.ayni-ai.com`
+- Custom domain `app.ayni-ai.com` (CNAME auto-added; same Cloudflare account as the zone)
+- Coordinator secrets it needs: `SC_DATABASE_URL`, `SC_GITHUB_CLIENT_ID/SECRET`,
+  `SC_AUTH_CALLBACK_BASE`, `SC_APP_URL`, `SC_COOKIE_DOMAIN`, and (for money)
+  `SC_STRIPE_SECRET_KEY`, `SC_BILLING_ENFORCE=1`
+
+Full walkthrough of the first customer cycle: [`LIVE-CYCLE.md`](LIVE-CYCLE.md).
+The GitHub OAuth app's callback URL must be exactly
+`https://api.ayni-ai.com/auth/github/callback`.
 
 ## Console — M4
 
