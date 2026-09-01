@@ -120,5 +120,30 @@ async fn main() -> Result<()> {
         });
     }
 
-    provider_lib::run(cfg, Arc::new(LogSink), None, shutdown).await
+    // Stay connected: a coordinator redeploy or a transient network drop ends one
+    // run(); reconnect with capped backoff until Ctrl-C. Backoff resets after a
+    // session that lasted a little while (i.e. we were actually registered).
+    let sink = Arc::new(LogSink);
+    let mut backoff = std::time::Duration::from_secs(2);
+    let cap = std::time::Duration::from_secs(30);
+    loop {
+        let started = std::time::Instant::now();
+        let res = provider_lib::run(cfg.clone(), sink.clone(), None, shutdown.clone()).await;
+        if shutdown.is_cancelled() {
+            return res;
+        }
+        if let Err(e) = &res {
+            tracing::warn!(error = %e, "provider run ended; will reconnect");
+        } else {
+            info!("provider disconnected; will reconnect");
+        }
+        if started.elapsed() >= std::time::Duration::from_secs(20) {
+            backoff = std::time::Duration::from_secs(2);
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(backoff) => {}
+            _ = shutdown.cancelled() => return Ok(()),
+        }
+        backoff = std::cmp::min(backoff * 2, cap);
+    }
 }
