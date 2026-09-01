@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Ayni production QA sweep. Run from repo root with .env.local sourced.
+# Ayni production QA sweep.
+#   ./scripts/qa-prod.sh            # reads .env.local at repo root
+#   SC_COORDINATOR_API=... SC_CONSUMER_KEY=... SC_ADMIN_TOKEN=... ./scripts/qa-prod.sh
 set -u
-cd "$(dirname "${BASH_SOURCE[0]}")"
-REPO="/Users/miguecastro/Shared Compute/shared-compute"
-set -a; . "$REPO/.env.local"; set +a
-API="$SC_COORDINATOR_API"; KEY="$SC_CONSUMER_KEY"; ADM="$SC_ADMIN_TOKEN"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[ -f "$REPO/.env.local" ] && { set -a; . "$REPO/.env.local"; set +a; }
+API="${SC_COORDINATOR_API:?set SC_COORDINATOR_API}"
+KEY="${SC_CONSUMER_KEY:?set SC_CONSUMER_KEY}"
+ADM="${SC_ADMIN_TOKEN:?set SC_ADMIN_TOKEN}"
 pass=0; fail=0
 ok(){ echo "  PASS $1"; pass=$((pass+1)); }
 no(){ echo "  FAIL $1"; fail=$((fail+1)); }
