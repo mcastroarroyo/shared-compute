@@ -4,8 +4,19 @@ Status of the push to a hardened, market-ready state. Updated 2026-09-01.
 
 ## Done — shipped & verified in production
 
+### Web surfaces (Cloudflare Pages, auto-deploy on push to `main`)
+| URL | Project | Root | Status |
+|---|---|---|---|
+| `ayni-ai.com` | `ayni` | `site` | live |
+| **`app.ayni-ai.com`** | `ayni-app` | `webapp` | **live** — built from `main`, `NEXT_PUBLIC_API_URL=https://api.ayni-ai.com` baked in |
+| **`demo.ayni-ai.com`** | `ayni-demo` | `demo` | **live** |
+| `ayni-console.pages.dev` | `ayni-console` | `console` | live |
+
 ### Coordinator (`api.ayni-ai.com`, Fly `ayni-coordinator`)
-- Deployed at `main` (installer fix, `/v1/demo/*`, Council-in-the-loop, manifest signing).
+- Deployed at `main` (installer fix, `/v1/demo/*`, Council-in-the-loop, manifest signing,
+  request-body ceiling + prompt-size guard).
+- `SC_GITHUB_CLIENT_ID` set to the real value (`Ov23liLR5kTzRtS6gS1y`). Only the
+  **client secret** remains — see user list.
 - **Workload Manifest v1 signing ON** — `SC_MANIFEST_SIGNING_KEY` / `SC_MANIFEST_SIGNER_ID=ayni-coordinator-v1`.
   `GET /v1/manifest-key` serves the Ed25519 public key. Every dispatched job carries a
   signed manifest; verified end-to-end against a provider running
@@ -52,31 +63,29 @@ admin endpoints (200 with token, 401 without), and the negative set
 Each is an account/credential action Claude cannot perform. Do these and the
 remaining surfaces light up.
 
-1. **GitHub OAuth app** → sign-in on `app.ayni-ai.com`
-   - github.com → Settings → Developer settings → OAuth Apps → New
-   - Homepage `https://ayni-ai.com`, callback **exactly** `https://api.ayni-ai.com/auth/github/callback`
-   - `fly secrets set --app ayni-coordinator SC_GITHUB_CLIENT_ID=… SC_GITHUB_CLIENT_SECRET=…`
-     (an earlier run used literal `...` placeholders — use the real values)
-   - Optional: Google, same shape, callback `.../auth/google/callback`, `SC_GOOGLE_CLIENT_*`
+1. **GitHub OAuth app — the client secret only** (app + client ID + callback URL are all set)
+   - github.com → Settings → Developer settings → OAuth Apps → **Ayni** → *Generate a new client secret*
+   - Copy it, then:
+     `fly secrets set --app ayni-coordinator SC_GITHUB_CLIENT_SECRET=<the-secret>`
+     then `fly secrets deploy --app ayni-coordinator`
+   - Test: open `https://app.ayni-ai.com` → Continue with GitHub → should land on `/dashboard/`.
+   - Optional: Google OAuth (new app, callback `https://api.ayni-ai.com/auth/google/callback`),
+     `SC_GOOGLE_CLIENT_ID` / `SC_GOOGLE_CLIENT_SECRET`.
 
-2. **Cloudflare Pages — two projects** (connect the GitHub repo)
-   | Project | Root dir | Output | Env | Domain |
-   |---|---|---|---|---|
-   | `ayni-app` | `webapp` | `out` | `NEXT_PUBLIC_API_URL=https://api.ayni-ai.com` | `app.ayni-ai.com` |
-   | `ayni-demo` | `demo` | `out` | `NEXT_PUBLIC_API_URL=https://api.ayni-ai.com` (+ optional `NEXT_PUBLIC_CALENDAR_URL`) | `demo.ayni-ai.com` |
-   Framework preset: Next.js (Static HTML Export). Auto-deploys on push after that.
-
-3. **Stripe LIVE mode**
+2. **Stripe LIVE mode**
    - `fly secrets set --app ayni-coordinator SC_STRIPE_SECRET_KEY=sk_live_… SC_STRIPE_WEBHOOK_SECRET=whsec_… SC_STRIPE_CONNECT_WEBHOOK_SECRET=whsec_…`
    - Stripe Dashboard → Webhooks: `https://api.ayni-ai.com/billing/webhook` (`checkout.session.completed`)
      and `https://api.ayni-ai.com/payouts/webhook` (Connect thin events)
    - Provider payouts stay operator-approved: `POST /admin/payouts/run?commit=1` (you run it)
 
-4. **Council model reviewer** (optional, recommended)
+3. **Council model reviewer** (optional, recommended)
    - `fly secrets set --app ayni-coordinator SC_COUNCIL_MODEL_API=anthropic SC_COUNCIL_MODEL_KEY=sk-ant-… SC_COUNCIL_MODEL_ID=claude-haiku-4-5-20251001`
    - Without it the 2 deterministic reviewers run and the loop is fully functional.
 
-5. **Deploy secret** after any `fly secrets set`: `fly secrets deploy --app ayni-coordinator`
+4. **Deploy secrets** after any `fly secrets set`: `fly secrets deploy --app ayni-coordinator`
+
+5. **Keep a demo provider online** for `demo.ayni-ai.com` — [`infra/demo-provider/`](../infra/demo-provider/)
+   on a small always-on box (or your Mac/Pixel while showing it).
 
 ## Explicitly deferred (not blockers to a soft launch, real blockers to scale)
 
