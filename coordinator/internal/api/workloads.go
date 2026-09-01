@@ -545,6 +545,9 @@ func toBatchItems(in []batchItemReq) ([]batch.Item, string) {
 		if len(it.Messages) == 0 {
 			return nil, "items[" + strconv.Itoa(i) + "] has no messages"
 		}
+		if messagesTooBig(it.Messages) {
+			return nil, "items[" + strconv.Itoa(i) + "] message content exceeds the limit"
+		}
 		maxTok := defaultMaxTokens
 		if it.MaxTokens != nil && *it.MaxTokens > 0 {
 			maxTok = *it.MaxTokens

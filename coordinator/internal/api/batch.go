@@ -61,6 +61,11 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 				"items["+strconv.Itoa(i)+"] has no messages")
 			return
 		}
+		if messagesTooBig(it.Messages) {
+			writeError(w, http.StatusRequestEntityTooLarge, "prompt_too_large",
+				"items["+strconv.Itoa(i)+"] message content exceeds the limit")
+			return
+		}
 	}
 
 	hwClass, ok := s.resolveModel(req.Model)

@@ -142,7 +142,27 @@ func (s *Server) Handler() http.Handler {
 		s.auth.Mount(mux)
 	}
 	s.mountAdmin(mux)
-	return withCORS(s.cfg.AppURL, logRequests(s.log, mux))
+	return withCORS(s.cfg.AppURL, logRequests(s.log, limitBody(maxRequestBytes, mux)))
+}
+
+// maxRequestBytes is a hard ceiling on any request body. Legitimate max-size
+// batches and pasted documents sit far below it; the point is to turn an
+// unbounded upload into a clean 413 instead of memory pressure. Handlers that
+// need a tighter bound (public quote, demo) still set their own MaxBytesReader.
+const maxRequestBytes = 12 << 20 // 12 MiB
+
+func limitBody(n int64, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if r.ContentLength > n {
+				writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large",
+					"request body exceeds the limit")
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, n)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // withCORS makes the API reachable from the browser console and the signed-in

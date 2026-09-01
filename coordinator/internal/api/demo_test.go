@@ -58,6 +58,7 @@ func TestDeviceLabel(t *testing.T) {
 	cases := []struct{ plat, arch, backend, want string }{
 		{"android", "aarch64", "llama", "Android phone · llama"},
 		{"darwin", "arm64", "metal", "Apple-silicon Mac · metal"},
+		{"macos", "arm64", "llama-cpp", "Apple-silicon Mac · llama-cpp"},
 		{"linux", "x86_64", "cuda", "Linux desktop (x86-64) · cuda"},
 		{"windows", "amd64", "", "Windows PC"},
 		{"plan9", "mips", "", "plan9 mips"},

@@ -239,11 +239,14 @@ func (s *Server) handleDemoLastJob(w http.ResponseWriter, _ *http.Request) {
 func deviceLabel(p *registry.Provider) string {
 	c := p.Capabilities
 	base := c.Platform + " " + c.Arch
+	mac := c.Platform == "darwin" || c.Platform == "macos"
 	switch {
 	case c.Platform == "android":
 		base = "Android phone"
-	case c.Platform == "darwin" && c.Arch == "arm64":
+	case mac && (c.Arch == "arm64" || c.Arch == "aarch64"):
 		base = "Apple-silicon Mac"
+	case mac:
+		base = "Mac"
 	case c.Platform == "linux" && (c.Arch == "amd64" || c.Arch == "x86_64"):
 		base = "Linux desktop (x86-64)"
 	case c.Platform == "linux" && (c.Arch == "arm64" || c.Arch == "aarch64"):

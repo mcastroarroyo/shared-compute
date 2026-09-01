@@ -47,6 +47,22 @@ func (s *Server) resolveModel(model string) (hwClass string, ok bool) {
 	return "", false
 }
 
+// maxPromptChars caps the combined message content on a single inference item.
+// The largest model context is ~8k tokens (~32 KB); this leaves generous headroom
+// while stopping one request from carrying megabytes of text into the pipeline.
+const maxPromptChars = 256 * 1024
+
+func messagesTooBig(msgs []protocol.ChatMessage) bool {
+	n := 0
+	for _, m := range msgs {
+		n += len(m.Content)
+		if n > maxPromptChars {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -55,6 +71,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Model == "" || len(req.Messages) == 0 {
 		writeError(w, http.StatusBadRequest, "invalid_request", "model and messages are required")
+		return
+	}
+	if messagesTooBig(req.Messages) {
+		writeError(w, http.StatusRequestEntityTooLarge, "prompt_too_large",
+			"combined message content exceeds the limit")
 		return
 	}
 
