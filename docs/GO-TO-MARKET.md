@@ -1,6 +1,6 @@
 # Ayni — go-to-market readiness
 
-Status of the push to a hardened, market-ready state. Updated 2026-09-02.
+Status of the push to a hardened, market-ready state. Updated 2026-09-02 (evening).
 
 ## Done — shipped & verified in production
 
@@ -36,11 +36,31 @@ admin endpoints (200 with token, 401 without), and the negative set
 ### Providers
 - **Laptop/desktop**: builds with `--features llama`, loads the model on Metal,
   registers as `community`, ~80 tok/s, serves real inference. Manifest verification
-  confirmed in enforcing mode.
+  confirmed in enforcing mode. `release-provider.yml` now also builds
+  **`provider-daemon-windows-x64.exe`** (MSVC + CMake + Ninja, same `--features llama`
+  build as macOS/Linux) — first run in progress; there's no one-line Windows installer
+  yet (`install/provider.sh` is bash/curl), so this is "a real binary exists," not
+  "click-to-join" parity with Mac/Linux.
 - **Phone (Pixel)**: registers as `device_attested`, serves real llama.cpp inference,
-  ~14 tok/s, counters + earnings estimate update live.
-- **Reconnect**: the daemon now reconnects with capped backoff instead of exiting on
-  a drop (was: every coordinator deploy silently removed all providers).
+  ~14 tok/s, counters + earnings estimate update live. Now has real CI coverage
+  (`.github/workflows/android.yml`, mock-backend build + unit tests — the llama.cpp
+  cross-compile stays a manual/hardware step) so a Kotlin/manifest/bindings break
+  doesn't ship silently.
+- **Reconnect**: the desktop daemon reconnects with capped backoff instead of exiting on
+  a drop (was: every coordinator deploy silently removed all providers). The Android
+  app's own reconnect only covered a dropped WebSocket, not the OS killing the whole
+  process — added a `BootReceiver` (resumes sharing after a reboot if it was on) and a
+  battery-optimization-exemption prompt while sharing is active.
+
+### Android — known gap worth a deliberate decision
+`app/build.gradle.kts` sets `minSdk = 26` (Android 8.0+), but the uniffi-generated
+Kotlin bindings (`uniffi/sc_mobile/sc_mobile.kt`, from uniffi 0.29) use
+`java.lang.ref.Cleaner`, which needs **API 33**. `lintDebug` catches this (3 `NewApi`
+errors) — it's excluded from the new CI job for now rather than silenced, because the
+right fix is a choice: raise `minSdk` (cuts off real API 26–32 devices — a lot of the
+phones this project is pitched at), or find/patch a uniffi version whose generated
+Android bindings don't need `Cleaner` below 33. Not yet hit on the one physical device
+tested (a current Pixel), but it's a real crash risk on older hardware.
 
 ### Security review / light pen test — findings fixed
 | Check | Result |
@@ -57,6 +77,18 @@ admin endpoints (200 with token, 401 without), and the negative set
 | `npm audit` | only `sharp`/libvips — build-time, unused in static export (`images.unoptimized`), not shipped |
 | **Body size** | **FIXED** — was 500 / unbounded; now `limitBody` 12 MiB ⇒ 413, plus 256 KiB/item `prompt_too_large` guard |
 | **Provider resilience** | **FIXED** — reconnect loop (above) |
+
+### Council — a second real opinion, not just a second vote
+`security_critic` and `node_safety` used to run the identical structural-bounds
+check under different names — they always agreed, so the "second seat" added
+no real coverage. Now 3 genuinely distinct deterministic reviewers run every
+NORMAL-risk workload (the policy's target seat count):
+- `security_critic` — structural bounds (item/redundancy/token sanity).
+- `node_safety` — device-trust proportionality (large batches on an unattested
+  tier with no redundancy; over-redundant spot workloads).
+- `cost_governance` (new) — economic sanity (non-positive price blocks; a quote
+  priced far under its token volume flags for operator review — catches a
+  pricing-path bug, not an attack, before it reaches a provider).
 
 ### Council ledger now survives a redeploy
 Was in-process only — every deploy silently reset `/v1/council/decisions` and
@@ -98,7 +130,7 @@ remaining surfaces light up.
 
 3. **Council model reviewer** (optional, recommended)
    - `fly secrets set --app ayni-coordinator SC_COUNCIL_MODEL_API=anthropic SC_COUNCIL_MODEL_KEY=sk-ant-… SC_COUNCIL_MODEL_ID=claude-haiku-4-5-20251001`
-   - Without it the 2 deterministic reviewers run and the loop is fully functional.
+   - Without it the 3 deterministic reviewers run and the loop is fully functional.
 
 4. **Deploy secrets** after any `fly secrets set`: `fly secrets deploy --app ayni-coordinator`
 
@@ -112,8 +144,16 @@ remaining surfaces light up.
 - **Load/soak testing at production volume** (a light concurrency check is done — see above);
   multi-region coordinator + Postgres HA + Redis for scheduler/rate-limit state.
 - **SOC 2** readiness (only if selling to enterprises).
-- **Windows provider** build + signed installer; **confidential (Tier 2)** compute.
+- **Windows provider**: binary now builds in CI (see above) — a one-line installer
+  (PowerShell, not bash) and a real machine to smoke-test it on are still open.
+  **Confidential (Tier 2)** compute.
+- **Android minSdk vs uniffi `Cleaner`** (API 26 vs 33 — see above): needs a decision,
+  not a silent patch to generated code.
 - A real signed Council roster + live model providers for every seat (until then the
-  observatory stays labelled "demonstration data" even though decisions now persist).
+  `/v1/council/roster` observatory stays labelled "demonstration data" even though the
+  3 reviewers actually gating money today are genuinely distinct and decisions persist).
+  Worth considering: having `/v1/council/roster` show which of the 10 seats are real
+  vs. placeholder, instead of an all-fictional cast — deliberately not done without you
+  weighing in, since it changes what the public trust page claims.
 - Provider payout self-serve onboarding UI (operator triggers `/admin/payouts/connect` today —
   deliberate, so a payout is never one click for anyone but you).
