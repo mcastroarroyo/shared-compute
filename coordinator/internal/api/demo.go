@@ -121,7 +121,7 @@ func (s *Server) handleDemoSummarize(w http.ResponseWriter, r *http.Request) {
 		est.PromptTokens, est.CompletionTokens, 1, false,
 		float64(cost.TotalMicros)/1e6, est.ETASeconds)
 	outcome := council.Evaluate(r.Context(), prop, s.council, council.DefaultPolicy())
-	council.RecordWorkloadDecision(outcome, prop.Title)
+	council.RecordWorkloadDecision(r.Context(), outcome, prop.Title)
 
 	resp := map[string]any{
 		"object": "demo.summarize",

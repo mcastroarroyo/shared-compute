@@ -146,7 +146,7 @@ func (s *Server) handleCreateWorkload(w http.ResponseWriter, r *http.Request) {
 		est.PromptTokens, est.CompletionTokens, red, req.Spot,
 		float64(cost.TotalMicros)/1e6, est.ETASeconds)
 	outcome := council.Evaluate(r.Context(), prop, s.council, council.DefaultPolicy())
-	council.RecordWorkloadDecision(outcome, prop.Title)
+	council.RecordWorkloadDecision(r.Context(), outcome, prop.Title)
 	if outcome.Decision == council.Block {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error":   "council_blocked",
@@ -362,7 +362,7 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Council reviews the run's logs for improvements (content-free stats only).
-	review := council.ReviewRun(council.RunStats{
+	review := council.ReviewRun(r.Context(), council.RunStats{
 		WorkloadID: q.ID, Model: q.Model,
 		Items: len(q.Spec.Items), OK: merged.OK, Failed: merged.Failed,
 		Fanout: merged.Fanout, Concurrency: merged.Concurrency, WallMS: merged.WallMS,

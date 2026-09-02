@@ -153,11 +153,11 @@ func TestParseReviewStrict(t *testing.T) {
 }
 
 func TestReviewRunFindings(t *testing.T) {
-	clean := ReviewRun(RunStats{WorkloadID: "w1", Model: "m", Items: 4, OK: 4, Failed: 0, Fanout: 2, WallMS: 400, QuotedUSD: 0.10, ChargedUSD: 0.10})
+	clean := ReviewRun(context.Background(), RunStats{WorkloadID: "w1", Model: "m", Items: 4, OK: 4, Failed: 0, Fanout: 2, WallMS: 400, QuotedUSD: 0.10, ChargedUSD: 0.10})
 	if clean.Verdict != "CLEAN" || len(clean.Findings) != 0 {
 		t.Fatalf("clean run flagged: %+v", clean.Findings)
 	}
-	bad := ReviewRun(RunStats{WorkloadID: "w2", Model: "m", Items: 10, OK: 6, Failed: 4, Fanout: 1, WallMS: 60000, QuotedUSD: 0.10, ChargedUSD: 0.20})
+	bad := ReviewRun(context.Background(), RunStats{WorkloadID: "w2", Model: "m", Items: 10, OK: 6, Failed: 4, Fanout: 1, WallMS: 60000, QuotedUSD: 0.10, ChargedUSD: 0.20})
 	if bad.Verdict != "REVIEW" {
 		t.Fatalf("high failure + overcharge should be REVIEW, got %s", bad.Verdict)
 	}

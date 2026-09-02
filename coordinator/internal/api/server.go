@@ -33,22 +33,23 @@ type ctxKey int
 const ctxKeyID ctxKey = 0
 
 type Server struct {
-	cfg      config.Config
-	reg      *registry.Registry
-	job      *jobs.Manager
-	store    store.Store
-	cat      *catalog.Catalog
-	rl       *ratelimit.Limiter
-	intakeRL *ratelimit.Limiter
-	demoRL   *ratelimit.Limiter
-	demo     *demoState
-	log      *slog.Logger
-	hub      *wshub.Hub
-	stripe   *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
-	quotes   *marketplace.Store
-	signer   *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
-	auth     *auth.Auth       // nil unless Postgres + an OAuth client are configured
-	council  []council.Reviewer
+	cfg       config.Config
+	reg       *registry.Registry
+	job       *jobs.Manager
+	store     store.Store
+	cat       *catalog.Catalog
+	rl        *ratelimit.Limiter
+	intakeRL  *ratelimit.Limiter
+	demoRL    *ratelimit.Limiter
+	demo      *demoState
+	log       *slog.Logger
+	hub       *wshub.Hub
+	stripe    *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
+	quotes    *marketplace.Store
+	signer    *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
+	auth      *auth.Auth       // nil unless Postgres + an OAuth client are configured
+	council   []council.Reviewer
+	councilDB *councilStore // nil unless SC_DATABASE_URL is set; persists the Council ledger
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
@@ -82,27 +83,36 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		log.Info("council model reviewer enabled", "api", cfg.CouncilModelAPI, "model", cfg.CouncilModelID)
 	}
 
+	councilDB := newCouncilStore(context.Background(), cfg.DatabaseURL, log)
+	if councilDB != nil {
+		council.SetPersister(councilDB)
+		council.Hydrate(context.Background())
+		log.Info("council ledger persistence enabled")
+	}
+
 	return &Server{
 		cfg: cfg, reg: reg, job: job, store: st, cat: cat,
-		rl:       ratelimit.New(cfg.RatePerMin),
-		intakeRL: ratelimit.New(6), // public site forms: 6/min per IP
-		demoRL:   ratelimit.New(3), // investor demo: 3 runs/min per IP
-		demo:     &demoState{},
-		log:      log,
-		hub:      hub,
-		stripe:   newStripeClient(cfg.StripeSecretKey),
-		quotes:   marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
-		signer:   signer,
-		auth:     au,
-		council:  reviewers,
+		rl:        ratelimit.New(cfg.RatePerMin),
+		intakeRL:  ratelimit.New(6), // public site forms: 6/min per IP
+		demoRL:    ratelimit.New(3), // investor demo: 3 runs/min per IP
+		demo:      &demoState{},
+		log:       log,
+		hub:       hub,
+		stripe:    newStripeClient(cfg.StripeSecretKey),
+		quotes:    marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
+		signer:    signer,
+		auth:      au,
+		council:   reviewers,
+		councilDB: councilDB,
 	}
 }
 
-// Close releases resources the server owns (the auth DB pool).
+// Close releases resources the server owns (the auth and council DB pools).
 func (s *Server) Close() {
 	if s.auth != nil {
 		s.auth.Close()
 	}
+	s.councilDB.Close()
 }
 
 func (s *Server) Handler() http.Handler {

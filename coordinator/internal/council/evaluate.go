@@ -437,14 +437,18 @@ func (m *ModelReviewer) callOpenAI(ctx context.Context, prompt string) (string, 
 
 // --- recording real decisions into the public ledger ---
 
+// maxRecent caps the in-process ledger (and how much Hydrate loads back).
+const maxRecent = 50
+
 var (
 	recentMu sync.Mutex
 	recent   []PublicDecision
 )
 
 // RecordWorkloadDecision appends a real Council outcome to the public ledger so
-// it shows on /v1/council/decisions alongside the seeded demo records.
-func RecordWorkloadDecision(o Outcome, title string) {
+// it shows on /v1/council/decisions alongside the seeded demo records, and
+// best-effort persists it if a Persister is wired (see SetPersister).
+func RecordWorkloadDecision(ctx context.Context, o Outcome, title string) {
 	rd, _ := Roster()["selection_digest"].(string)
 	votes := map[string]int{"approve": 0, "conditional": 0, "block": 0, "missing": len(o.Missing)}
 	for _, r := range o.Reviews {
@@ -481,7 +485,6 @@ func RecordWorkloadDecision(o Outcome, title string) {
 	}
 
 	recentMu.Lock()
-	defer recentMu.Unlock()
 	if len(recent) > 0 {
 		rec.PreviousRecordHash = recent[len(recent)-1].RecordHash
 	} else {
@@ -489,8 +492,13 @@ func RecordWorkloadDecision(o Outcome, title string) {
 	}
 	rec.RecordHash = recordHash(canonicalDecision(rec))
 	recent = append(recent, rec)
-	if len(recent) > 50 {
-		recent = recent[len(recent)-50:]
+	if len(recent) > maxRecent {
+		recent = recent[len(recent)-maxRecent:]
+	}
+	recentMu.Unlock()
+
+	if persister != nil {
+		_ = persister.SaveDecision(ctx, rec)
 	}
 }
 
@@ -531,9 +539,10 @@ var (
 	runReviews []RunReview
 )
 
-// ReviewRun applies deterministic heuristics to an executed workload's stats and
-// records the review. No prompt or completion text is involved.
-func ReviewRun(s RunStats) RunReview {
+// ReviewRun applies deterministic heuristics to an executed workload's stats,
+// records the review, and best-effort persists it if a Persister is wired. No
+// prompt or completion text is involved.
+func ReviewRun(ctx context.Context, s RunStats) RunReview {
 	f := []Finding{}
 	total := s.OK + s.Failed
 	if s.Failed > 0 {
@@ -578,10 +587,14 @@ func ReviewRun(s RunStats) RunReview {
 
 	runsMu.Lock()
 	runReviews = append(runReviews, rr)
-	if len(runReviews) > 50 {
-		runReviews = runReviews[len(runReviews)-50:]
+	if len(runReviews) > maxRecent {
+		runReviews = runReviews[len(runReviews)-maxRecent:]
 	}
 	runsMu.Unlock()
+
+	if persister != nil {
+		_ = persister.SaveRunReview(ctx, rr)
+	}
 	return rr
 }
 
