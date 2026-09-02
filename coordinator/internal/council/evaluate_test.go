@@ -135,6 +135,75 @@ func TestDeterministicReviewerBounds(t *testing.T) {
 	}
 }
 
+func TestNodeSafetyReviewer(t *testing.T) {
+	n := NewNodeSafetyReviewer("node_safety", "Node and Provider Safety Guardian")
+
+	ok, _ := n.Review(context.Background(), Proposal{Facts: map[string]any{
+		"items": 100, "redundancy": 1, "tier": "community", "spot": false,
+	}})
+	if ok.Decision != Approve {
+		t.Fatalf("ordinary small batch should approve, got %s", ok.Decision)
+	}
+
+	large, _ := n.Review(context.Background(), Proposal{Facts: map[string]any{
+		"items": 5000, "redundancy": 1, "tier": "community", "spot": false,
+	}})
+	if large.Decision != Conditional {
+		t.Fatalf("large single-redundancy batch on community tier should be conditional, got %s", large.Decision)
+	}
+	// the same large batch on an attested tier, or with enough redundancy, is fine
+	attested, _ := n.Review(context.Background(), Proposal{Facts: map[string]any{
+		"items": 5000, "redundancy": 1, "tier": "device_attested", "spot": false,
+	}})
+	if attested.Decision != Approve {
+		t.Fatalf("large batch on an attested tier should approve, got %s", attested.Decision)
+	}
+	redundant, _ := n.Review(context.Background(), Proposal{Facts: map[string]any{
+		"items": 5000, "redundancy": 2, "tier": "community", "spot": false,
+	}})
+	if redundant.Decision != Approve {
+		t.Fatalf("large batch with redundancy>=2 should approve, got %s", redundant.Decision)
+	}
+
+	spotHeavy, _ := n.Review(context.Background(), Proposal{Facts: map[string]any{
+		"items": 10, "redundancy": 3, "tier": "community", "spot": true,
+	}})
+	if spotHeavy.Decision != Conditional {
+		t.Fatalf("high redundancy on spot should be conditional, got %s", spotHeavy.Decision)
+	}
+}
+
+func TestCostGovernanceReviewer(t *testing.T) {
+	c := NewCostGovernanceReviewer("cost_governance", "Cost & Pricing Governance")
+
+	ok, _ := c.Review(context.Background(), Proposal{Facts: map[string]any{
+		"price_usd": 0.05, "items": 1, "prompt_tokens": int64(500), "completion_tokens": int64(500),
+	}})
+	if ok.Decision != Approve {
+		t.Fatalf("proportionate price should approve, got %s", ok.Decision)
+	}
+
+	free, _ := c.Review(context.Background(), Proposal{Facts: map[string]any{
+		"price_usd": 0.0, "items": 1, "prompt_tokens": int64(500), "completion_tokens": int64(500),
+	}})
+	if free.Decision != Block {
+		t.Fatalf("zero price should block, got %s", free.Decision)
+	}
+	negative, _ := c.Review(context.Background(), Proposal{Facts: map[string]any{
+		"price_usd": -1.0, "items": 1, "prompt_tokens": int64(1), "completion_tokens": int64(1),
+	}})
+	if negative.Decision != Block {
+		t.Fatalf("negative price should block, got %s", negative.Decision)
+	}
+
+	underpriced, _ := c.Review(context.Background(), Proposal{Facts: map[string]any{
+		"price_usd": 0.000001, "items": 1, "prompt_tokens": int64(1_000_000), "completion_tokens": int64(1_000_000),
+	}})
+	if underpriced.Decision != Conditional {
+		t.Fatalf("price far under token volume should be conditional, got %s", underpriced.Decision)
+	}
+}
+
 func TestParseReviewStrict(t *testing.T) {
 	good := `{"decision":"APPROVE","severity":"LOW","confidence":0.8,"attack_scenarios":[],"required_controls":[]}`
 	r, err := parseReview("here is my review: " + good + " thanks")

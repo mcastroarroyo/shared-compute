@@ -1,5 +1,6 @@
 package dev.ayni.provider
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -95,7 +96,10 @@ object HardwareIdentity {
             .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
             .setAttestationChallenge(challenge)
-            .apply { if (sb) setIsStrongBoxBacked(true) }
+            // hasStrongBox() already implies API 28+ (the feature flag didn't exist
+            // before then), but spell out the SDK check here too so lint's local
+            // data-flow analysis — which can't see that guarantee — is satisfied.
+            .apply { if (sb && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) setIsStrongBoxBacked(true) }
             .build()
 
         val gen = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KS)

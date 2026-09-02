@@ -1,8 +1,12 @@
 package dev.ayni.provider
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -152,6 +156,35 @@ private fun App() {
             ) { Text("Stop") }
         }
         if (!configured) Text("Enter a registration token in Settings, then Start.")
+
+        val powerManager = remember { ctx.getSystemService(PowerManager::class.java) }
+        var batteryExempt by remember {
+            mutableStateOf(powerManager?.isIgnoringBatteryOptimizations(ctx.packageName) ?: true)
+        }
+        // Re-check when the app resumes (e.g. the operator just came back from the
+        // system settings screen below).
+        LaunchedEffect(Unit) {
+            while (true) {
+                batteryExempt = powerManager?.isIgnoringBatteryOptimizations(ctx.packageName) ?: true
+                delay(3000)
+            }
+        }
+        if (configured && running && !batteryExempt) {
+            Text(
+                "Android may pause this in the background overnight. For reliable " +
+                    "sharing, let it ignore battery optimizations.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = {
+                ctx.startActivity(
+                    Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:${ctx.packageName}"),
+                    )
+                )
+            }) { Text("Allow background running") }
+        }
 
         if (confirmStop) AlertDialog(
             onDismissRequest = { confirmStop = false },

@@ -51,4 +51,10 @@ class ConfigStore(context: Context) {
         putBoolean("wifi", s.onlyOnWifi)
         putInt("minBat", s.minBatteryPct)
     }.apply()
+
+    // Tracks operator intent ("I want this device sharing") independently of the
+    // settings form's Save button, so BootReceiver can resume sharing after a
+    // reboot without needing the whole ProviderSettings round-trip.
+    fun setSharingEnabled(v: Boolean) = sp.edit().putBoolean("sharingEnabled", v).apply()
+    fun isSharingEnabled(): Boolean = sp.getBoolean("sharingEnabled", false)
 }

@@ -75,7 +75,8 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 
 	reviewers := []council.Reviewer{
 		council.NewDeterministicReviewer("security_critic", "Chief Security Critic"),
-		council.NewDeterministicReviewer("node_safety", "Node and Provider Safety Guardian"),
+		council.NewNodeSafetyReviewer("node_safety", "Node and Provider Safety Guardian"),
+		council.NewCostGovernanceReviewer("cost_governance", "Cost & Pricing Governance"),
 	}
 	if mr := council.NewModelReviewer("red_team", "Red Team Director",
 		cfg.CouncilModelAPI, cfg.CouncilModelKey, cfg.CouncilModelID); mr != nil {

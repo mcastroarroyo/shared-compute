@@ -115,10 +115,14 @@ class ProviderService : Service() {
         const val NOTIF_ID = 1
         const val ACTION_STOP = "dev.ayni.provider.STOP"
 
-        fun start(ctx: android.content.Context) =
+        fun start(ctx: android.content.Context) {
+            ConfigStore(ctx).setSharingEnabled(true)
             ctx.startForegroundService(Intent(ctx, ProviderService::class.java))
+        }
 
-        fun stop(ctx: android.content.Context) =
+        fun stop(ctx: android.content.Context) {
+            ConfigStore(ctx).setSharingEnabled(false)
             ctx.startService(Intent(ctx, ProviderService::class.java).setAction(ACTION_STOP))
+        }
     }
 }

@@ -1,0 +1,74 @@
+name: android
+
+# CI safety net for the Kotlin app + its uniffi bridge to provider-core. Builds
+# the mock backend (no cmake/llama.cpp cross-compile — that's a heavier,
+# separate concern exercised manually against real hardware) so this stays
+# fast: it exists to catch Kotlin/manifest/bindings regressions, not to
+# reproduce a full release build.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android-app/**"
+      - "provider-core/sc-mobile/**"
+      - "provider-core/provider-lib/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android-app/**"
+      - "provider-core/sc-mobile/**"
+      - "provider-core/provider-lib/**"
+      - ".github/workflows/android.yml"
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: "27.2.12479018"
+
+jobs:
+  build:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: provider-core
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Install Android NDK ${{ env.NDK_VERSION }}
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${{ env.NDK_VERSION }}" >/dev/null
+
+      - name: Build the mock-backend native lib + uniffi Kotlin bindings
+        env:
+          ABIS: arm64-v8a
+          ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
+          # build-native.sh defaults to a Homebrew rustup shim that only
+          # exists on the maintainer's Mac; dtolnay/rust-toolchain already put
+          # the right (Android-std-enabled) cargo/rustc on PATH here.
+          CARGO: cargo
+          RUSTC: rustc
+        run: |
+          ln -s "$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" "$ANDROID_NDK_HOME"
+          ./build-native.sh
+
+      # lintDebug is deliberately not run here yet: it currently fails on a
+      # pre-existing minSdk/uniffi mismatch in generated code (see
+      # docs/GO-TO-MARKET.md) that needs a real decision, not a CI-red band-aid.
+      - run: ./gradlew assembleDebug testDebugUnitTest --console=plain

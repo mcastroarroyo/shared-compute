@@ -286,6 +286,99 @@ func (d *DeterministicReviewer) Review(_ context.Context, p Proposal) (Review, e
 	return rv, nil
 }
 
+// --- node safety reviewer ---
+
+// NodeSafetyReviewer votes on device-trust proportionality: whether the tier
+// and redundancy requested actually fit what that class of device can be
+// trusted to do alone. A different concern from DeterministicReviewer's
+// structural bounds check, so the two seats aren't just casting the same vote
+// twice under different names.
+type NodeSafetyReviewer struct{ seat, role string }
+
+func NewNodeSafetyReviewer(seat, role string) *NodeSafetyReviewer {
+	return &NodeSafetyReviewer{seat: seat, role: role}
+}
+func (n *NodeSafetyReviewer) Seat() string { return n.seat }
+func (n *NodeSafetyReviewer) Role() string { return n.role }
+
+func (n *NodeSafetyReviewer) Review(_ context.Context, p Proposal) (Review, error) {
+	items, _ := toInt(p.Facts["items"])
+	red, _ := toInt(p.Facts["redundancy"])
+	tier, _ := p.Facts["tier"].(string)
+	spot, _ := p.Facts["spot"].(bool)
+
+	// A large batch on an unattested (community) tier with no redundancy is a
+	// single unattested device deciding the whole result set — the failure
+	// mode Ayni's redundancy/attestation model exists to avoid.
+	if tier == "community" && items > 1000 && red < 2 {
+		return Review{
+			Decision: Conditional, Severity: Medium, Confidence: 0.85,
+			AttackScenarios: []string{
+				"one unattested device serving a large batch alone can silently corrupt every item in it",
+			},
+			RequiredControls: []string{"require redundancy >= 2 for community-tier batches over 1000 items"},
+			Note:             "large single-redundancy batch on an unattested tier",
+		}, nil
+	}
+	// Spot capacity is explicitly best-effort and interruptible; stacking
+	// heavy redundancy on it works against the cheap/opportunistic trade the
+	// spot tier exists for, and strands more nodes than the discount justifies.
+	if spot && red >= 3 {
+		return Review{
+			Decision: Conditional, Severity: Low, Confidence: 0.8,
+			RequiredControls: []string{"cap spot redundancy at 2; route anything needing 3x confirmation to on-demand"},
+			Note:             "high redundancy requested on interruptible spot capacity",
+		}, nil
+	}
+	return Review{Decision: Approve, Severity: Low, Confidence: 0.9,
+		Note: "device-trust tier and redundancy are proportionate to the workload"}, nil
+}
+
+// --- cost governance reviewer ---
+
+// CostGovernanceReviewer sanity-checks the economics of a proposal. A price
+// that's structurally too low for the token volume signals a pricing-path bug
+// (or an attempt to force Ayni to run real compute near-free), not a security
+// attack — still worth catching before it reaches a provider.
+type CostGovernanceReviewer struct{ seat, role string }
+
+func NewCostGovernanceReviewer(seat, role string) *CostGovernanceReviewer {
+	return &CostGovernanceReviewer{seat: seat, role: role}
+}
+func (c *CostGovernanceReviewer) Seat() string { return c.seat }
+func (c *CostGovernanceReviewer) Role() string { return c.role }
+
+func (c *CostGovernanceReviewer) Review(_ context.Context, p Proposal) (Review, error) {
+	price, _ := p.Facts["price_usd"].(float64)
+	ct, _ := toInt(p.Facts["completion_tokens"])
+	pt, _ := toInt(p.Facts["prompt_tokens"])
+	items, _ := toInt(p.Facts["items"])
+	if items < 1 {
+		items = 1
+	}
+
+	if price <= 0 {
+		return Review{
+			Decision: Block, Severity: High, Confidence: 1,
+			AttackScenarios:  []string{"a zero or negative quote would run real compute for free, or at negative revenue"},
+			RequiredControls: []string{"reject any quote that doesn't clear the pricing floor"},
+			Note:             "non-positive price on a real workload",
+		}, nil
+	}
+	totalTok := (ct + pt) * items
+	// Deliberately loose — this exists to catch a broken pricing path, not to
+	// second-guess an ordinary quote from the real pricing engine.
+	if totalTok > 0 && price*1_000_000/float64(totalTok) < 0.01 {
+		return Review{
+			Decision: Conditional, Severity: Medium, Confidence: 0.7,
+			RequiredControls: []string{"operator review before running a workload priced this far under its token volume"},
+			Note:             "price looks too low for the quoted token volume — possible pricing-path bug",
+		}, nil
+	}
+	return Review{Decision: Approve, Severity: Low, Confidence: 0.9,
+		Note: "price is proportionate to the quoted token volume"}, nil
+}
+
 // --- model reviewer ---
 
 // ModelReviewer is one Council seat backed by a real model API. A malformed or
