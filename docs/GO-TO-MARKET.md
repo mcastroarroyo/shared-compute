@@ -1,6 +1,6 @@
 # Ayni — go-to-market readiness
 
-Status of the push to a hardened, market-ready state. Updated 2026-09-01.
+Status of the push to a hardened, market-ready state. Updated 2026-09-02.
 
 ## Done — shipped & verified in production
 
@@ -58,6 +58,24 @@ admin endpoints (200 with token, 401 without), and the negative set
 | **Body size** | **FIXED** — was 500 / unbounded; now `limitBody` 12 MiB ⇒ 413, plus 256 KiB/item `prompt_too_large` guard |
 | **Provider resilience** | **FIXED** — reconnect loop (above) |
 
+### Council ledger now survives a redeploy
+Was in-process only — every deploy silently reset `/v1/council/decisions` and
+`/v1/council/run-reviews` to just the seeded demo rows. Now persisted to
+Postgres (own small pool, JSONB rows, `internal/api/council_persist.go`),
+hydrated at boot before serving traffic so the hash chain links onto the real
+tail. **Verified live**: recorded a decision + run review, restarted the
+machine, both were still there (`live_count` and `run_reviews.count` unchanged,
+`chain_valid: true`).
+
+### Load check (light, against the live coordinator)
+- 100 requests to public `/v1/quote`, 20 concurrent → 6×200 then 94×429
+  (6/min-per-IP limiter holds), **zero 500s**, p95 ≈ 370 ms.
+- 60 concurrent reads across `/healthz` + `/v1/council/roster` → 60×200,
+  p95 ≈ 377 ms, no errors.
+- 30 concurrent `/v1/chat/completions` against a ~$0.04 test-credit balance →
+  all completed cleanly, no 500s; a genuine load/soak test at production
+  volume is still open (see deferred list).
+
 ## User-gated — the short list (everything else is done)
 
 Each is an account/credential action Claude cannot perform. Do these and the
@@ -91,9 +109,11 @@ remaining surfaces light up.
 
 - **External third-party pen test + security audit** before broad GA.
 - **Legal**: ToS, privacy policy, DPA, and review of the Darkbloom non-compete clause.
-- **Load testing** at scale; multi-region coordinator + Postgres HA + Redis for scheduler/rate-limit state.
+- **Load/soak testing at production volume** (a light concurrency check is done — see above);
+  multi-region coordinator + Postgres HA + Redis for scheduler/rate-limit state.
 - **SOC 2** readiness (only if selling to enterprises).
 - **Windows provider** build + signed installer; **confidential (Tier 2)** compute.
-- Persisted Council live records (currently in-memory, reset on deploy) and a real signed roster
-  (until then the observatory stays labelled "demonstration data").
-- Provider payout self-serve onboarding UI (operator triggers `/admin/payouts/connect` today).
+- A real signed Council roster + live model providers for every seat (until then the
+  observatory stays labelled "demonstration data" even though decisions now persist).
+- Provider payout self-serve onboarding UI (operator triggers `/admin/payouts/connect` today —
+  deliberate, so a payout is never one click for anyone but you).
