@@ -221,6 +221,7 @@ private fun App() {
             Field("Backend (mock / llama)", s.backend) { s = s.copy(backend = it) }
             Field("Manifest URL", s.manifestUrl) { s = s.copy(manifestUrl = it) }
             Field("Registry pubkey", s.registryPubkey) { s = s.copy(registryPubkey = it) }
+            Field("Manifest signing key", s.manifestVerifyKey) { s = s.copy(manifestVerifyKey = it) }
 
             Toggle("Only while charging", s.onlyWhenCharging) { s = s.copy(onlyWhenCharging = it) }
             Toggle("Only on Wi-Fi", s.onlyOnWifi) { s = s.copy(onlyOnWifi = it) }

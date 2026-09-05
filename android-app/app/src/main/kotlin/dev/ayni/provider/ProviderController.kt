@@ -97,6 +97,8 @@ object ProviderController {
             manifestUrl = s.manifestUrl.ifBlank { null },
             registryPubkey = s.registryPubkey.ifBlank { null },
             maxContext = s.maxContext.toUInt(),
+            manifestVerifyKey = s.manifestVerifyKey.ifBlank { null },
+            requireManifest = s.requireManifest,
         )
         val appCtx = ctx.applicationContext
         val signer = object : AttestationSigner {

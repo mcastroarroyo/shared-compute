@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NewApi on the uniffi-generated bindings is a static false positive: the generated
+  UniffiCleaner.create() probes java.lang.ref.Cleaner by reflection at runtime and
+  falls back to the JNA cleaner below API 33, so minSdk 26 is safe. Everything else
+  is still checked.
+-->
+<lint>
+    <issue id="NewApi">
+        <ignore path="src/main/java/uniffi/sc_mobile/sc_mobile.kt" />
+    </issue>
+</lint>

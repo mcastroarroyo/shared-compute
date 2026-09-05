@@ -21,10 +21,15 @@ android {
         applicationId = "dev.ayni.provider"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         // The native lib is produced by ../build-native.sh into src/main/jniLibs.
         ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    lint {
+        lintConfig = file("lint.xml")
+        abortOnError = true
     }
 
     signingConfigs {

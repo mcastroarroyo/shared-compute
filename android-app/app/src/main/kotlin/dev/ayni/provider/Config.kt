@@ -11,6 +11,10 @@ data class ProviderSettings(
     val manifestUrl: String = "https://models.ayni-ai.com",
     val registryPubkey: String = "p7UUs6aCFebGUfSvFV5Wczh7kYBCEW2tDRO+dV0IpDM=",
     val maxContext: Int = 8192,
+    // Coordinator Workload Manifest v1 signing key(s), "signer-id:<b64>", comma-separated.
+    // Default = the production Cloud KMS signer. Jobs without a valid manifest are refused.
+    val manifestVerifyKey: String = "ayni-coordinator-kms-v1:6QPfm1yfsgQJp2s5sRb+jqUPZC/fLXJJNnEwgWZb4vY=",
+    val requireManifest: Boolean = true,
     // policy
     val onlyWhenCharging: Boolean = true,
     val onlyOnWifi: Boolean = true,
@@ -33,6 +37,8 @@ class ConfigStore(context: Context) {
         manifestUrl = str("manifestUrl", d.manifestUrl),
         registryPubkey = str("pubkey", d.registryPubkey),
         maxContext = sp.getInt("maxCtx", d.maxContext),
+        manifestVerifyKey = str("manifestKey", d.manifestVerifyKey),
+        requireManifest = sp.getBoolean("requireManifest", d.requireManifest),
         onlyWhenCharging = sp.getBoolean("charging", true),
         onlyOnWifi = sp.getBoolean("wifi", true),
         minBatteryPct = sp.getInt("minBat", 30),
@@ -47,6 +53,8 @@ class ConfigStore(context: Context) {
         putString("manifestUrl", s.manifestUrl)
         putString("pubkey", s.registryPubkey)
         putInt("maxCtx", s.maxContext)
+        putString("manifestKey", s.manifestVerifyKey)
+        putBoolean("requireManifest", s.requireManifest)
         putBoolean("charging", s.onlyWhenCharging)
         putBoolean("wifi", s.onlyOnWifi)
         putInt("minBat", s.minBatteryPct)
