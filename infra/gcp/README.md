@@ -34,7 +34,7 @@ the dump is fetched over `fly ssh sftp`, and restored through `cloud-sql-proxy` 
 temporary public IP that is removed right after. See `infra/gcp/migrate-db.sh`.
 
 ## Cutover
-1. Deploy to Cloud Run; smoke `$(URL)/healthz`, `/v1/manifest-key`, `/v1/council/roster`.
+1. Deploy to Cloud Run; smoke `$(URL)/health` (Cloud Run intercepts the bare `/healthz` path), `/v1/manifest-key`, `/v1/council/roster`.
 2. Point `api.ayni-ai.com` (Cloudflare DNS) at the load balancer IP; providers reconnect
    automatically (the daemon has a backoff loop). Node verify key changes: the KMS public
    key is served at `/v1/manifest-key` — providers on `SC_REQUIRE_MANIFEST=1` must switch
@@ -43,5 +43,5 @@ temporary public IP that is removed right after. See `infra/gcp/migrate-db.sh`.
 4. Scale Fly to zero after 24 h clean; destroy after the first weekly backup lands.
 
 ## Observability
-Uptime check on `/healthz` with an alert policy; Cloud Run request/latency/5xx dashboard;
+Uptime check on `/health` with an alert policy; Cloud Run request/latency/5xx dashboard;
 Data Access audit logs enabled for Secret Manager + KMS + Cloud SQL.

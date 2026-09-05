@@ -130,6 +130,10 @@ func (s *Server) Close() {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", instrument("healthz", http.HandlerFunc(s.handleHealth)))
+	// Cloud Run's front end intercepts the exact path /healthz; these aliases are
+	// what the load balancer and uptime checks use there.
+	mux.Handle("GET /health", instrument("healthz", http.HandlerFunc(s.handleHealth)))
+	mux.Handle("GET /livez", instrument("healthz", http.HandlerFunc(s.handleHealth)))
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("GET /v1/manifest-key", instrument("v1_manifest_key", http.HandlerFunc(s.handleManifestKey)))
