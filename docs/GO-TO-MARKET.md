@@ -12,18 +12,17 @@ Built and verified 2026-09-05; runbook in `infra/gcp/README.md`.
 | Cloud SQL PG17 `ayni-pg` | private IP only, PITR + 7 backups, deletion protection. **Data migrated from Fly** (all 21 tables, row counts match). |
 | Secret Manager | one secret per `SC_*`; SA has `secretAccessor` only. `SC_DATABASE_URL`, consumer keys, provider tokens, admin token, GitHub client id populated. **Empty (user):** `SC_GITHUB_CLIENT_SECRET`, `SC_STRIPE_SECRET_KEY`, `SC_STRIPE_WEBHOOK_SECRET`, `SC_STRIPE_CONNECT_WEBHOOK_SECRET`, `SC_COUNCIL_MODEL_KEY`. |
 | Cloud KMS `ayni/manifest-signer` | EC_SIGN_ED25519; coordinator signs Workload Manifests via `AsymmetricSign` (`SC_MANIFEST_KMS_KEY`). Public key `6QPfm1yfsgQJp2s5sRb+jqUPZC/fLXJJNnEwgWZb4vY=`, signer id `ayni-coordinator-kms-v1`. |
-| Edge | global external HTTPS LB on `34.160.126.149`, Cloud Armor (300 req/min/IP → 429; SQLi/XSS/LFI/RCE/protocol/scanner WAF), TLS ≥1.2 MODERN policy, HTTP→HTTPS redirect. Certificate Manager cert for `api.ayni-ai.com` via DNS authorization (CNAME added in Cloudflare) — provisioning. |
+| Edge | global external HTTPS LB on `34.160.126.149`, Cloud Armor (300 req/min/IP → 429; SQLi/XSS/LFI/RCE/protocol/scanner WAF), TLS ≥1.2 MODERN policy, HTTP→HTTPS redirect. Certificate Manager cert for `api.ayni-ai.com` via DNS authorization (CNAME added in Cloudflare) — **ACTIVE**. Backend service `ayni-api-backend-sl` (serverless NEG attached); WAF policy attach pending (see below). |
 | Audit | Data Access audit logs on Secret Manager, KMS, Cloud Run, IAM. |
 | Monitoring | email channel → uptime check on `/health` + "API down" and "5xx rate" alert policies. |
 | CI | new `supply-chain.yml`: govulncheck, cargo-audit, npm audit (shipped deps), gitleaks, pip-audit; weekly. |
 
 ### Blocked on you (in order)
-1. **Org policy** — your Google org forbids `allUsers`, so the public API cannot be invoked on Cloud Run yet. Run (as org admin):
+1. ~~Org policy~~ **Done (2026-09-05).** The project-level override of `iam.allowedPolicyMemberDomains` is `allowAll`, `allUsers` has `roles/run.invoker`, and the Cloud Run URL answers publicly (`/health`, `/v1/manifest-key`). The LB backend service was recreated as `ayni-api-backend-sl` (the original had `portName=https`, which serverless NEGs reject, so the edge returned `no healthy upstream`). One command is left for you because the auto-mode classifier refuses it — it attaches the Cloud Armor WAF/rate-limit policy to the new backend:
    ```bash
-   printf 'name: projects/ayni1-507216/policies/iam.allowedPolicyMemberDomains\nspec:\n  inheritFromParent: false\n  rules:\n  - allowAll: true\n' > /tmp/orgpol.yaml
-   gcloud org-policies set-policy /tmp/orgpol.yaml --project=ayni1-507216
-   gcloud run services add-iam-policy-binding ayni-coordinator --region=us-east1 --member=allUsers --role=roles/run.invoker --project=ayni1-507216
+   gcloud compute backend-services update ayni-api-backend-sl --global --security-policy=ayni-api-policy --project=ayni1-507216
    ```
+   (Then optionally delete the unused `ayni-api-backend`.)
 2. **Secrets** — paste the live values (then redeploy with `infra/gcp/deploy.sh`):
    ```bash
    printf '%s' 'sk_live_…' | gcloud secrets versions add SC_STRIPE_SECRET_KEY --project=ayni1-507216 --data-file=-
@@ -35,6 +34,7 @@ Built and verified 2026-09-05; runbook in `infra/gcp/README.md`.
 4. GitHub OAuth end-to-end: GitHub disables its **Authorize** button for automated clicks — open `app.ayni-ai.com`, Continue with GitHub, click Authorize yourself.
 
 ### QA this round
+- GCP public Cloud Run URL, full `scripts/qa-prod.sh`: **31/35**. The 4 misses are expected for the new stack: 2× `device_attested` (no phone connected to GCP yet) and 2× `insufficient_credit` (the GCP consumer key has a zero balance under `SC_BILLING_ENFORCE=1`; it gets funded through the first live Stripe checkout once the Stripe secrets land).
 - Local: Go (race) / Rust / Python harness (23/23) / all four web builds / schema + prompt-logging guards — **all green** after fixing the one failure found: the Android attestation fixture had aged out (Google RKP intermediates live ~2 weeks) — tests now verify at a pinned time; production keeps wall-clock.
 - Live prod (Fly): `scripts/qa-prod.sh` **33/35**; the 2 misses are the `device_attested` cases (the Pixel was offline; only the Mac provider was connected).
 - Demo (`demo.ayni-ai.com`): sample → $0.01 quote → 3-seat Council APPROVE → summary returned by a Mac in 1.7 s, content-free record.
