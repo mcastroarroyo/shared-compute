@@ -1,0 +1,17 @@
+# Cloud Build: coordinator image -> Artifact Registry.
+#   gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=_TAG=$(git rev-parse --short HEAD) .
+substitutions:
+  _REGION: us-east1
+  _REPO: ayni
+  _TAG: dev
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "infra/coordinator.Dockerfile",
+           "-t", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/coordinator:${_TAG}",
+           "-t", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/coordinator:latest", "."]
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/coordinator:${_TAG}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/coordinator:latest"
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8

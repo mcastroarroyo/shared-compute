@@ -1,0 +1,11 @@
+.git
+node_modules
+**/node_modules
+**/.next
+**/out
+provider-core/target
+android-app/app/build
+android-app/build
+security/.venv
+models
+*.gguf
