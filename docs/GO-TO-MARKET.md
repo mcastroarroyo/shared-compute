@@ -86,7 +86,13 @@ admin endpoints (200 with token, 401 without), and the negative set
   process — added a `BootReceiver` (resumes sharing after a reboot if it was on) and a
   battery-optimization-exemption prompt while sharing is active.
 
-### Android — known gap worth a deliberate decision
+### Android — Play Store launch (in progress, 2026-09-05)
+- **Build:** `android-app` v0.2.0 (versionCode 2), signed release AAB with the `upload.jks` upload key (CN=Ayni Provider Upload, O=Zalesgen LLC). Pins the production KMS manifest key and requires signed manifests (fail-closed, like the desktop daemon). Lint enforced; the uniffi `Cleaner` NewApi warning is a static false positive (runtime reflection fallback to the JNA cleaner below API 33) and is scoped out in `app/lint.xml`, so **minSdk stays 26 — decided**.
+- **Site prerequisites:** `/privacy/` and `/terms/` pages live (footer-linked). Lawyer review still pending.
+- **Assets (scratchpad `play-assets/`):** `icon-512.png`, `feature-1024x500.png`, `listing.md` (name, short/full description, data-safety, content-rating, target-audience, financial-features answers, release notes), the AAB. Phone screenshots still to capture from the Pixel.
+- **Play Console blockers (owner):** developer account shows "Finish setting up" → verify organisation website (Search Console DNS TXT `google-site-verification=…` on `ayni-ai.com`, record value in Search Console; the Cloudflare TXT add and Search Console "Verify" are the owner's clicks) and verify phone numbers. Then: Create app → store listing → data safety → content rating → internal testing release with the AAB.
+
+### Android — minSdk decision (resolved above; history)
 `app/build.gradle.kts` sets `minSdk = 26` (Android 8.0+), but the uniffi-generated
 Kotlin bindings (`uniffi/sc_mobile/sc_mobile.kt`, from uniffi 0.29) use
 `java.lang.ref.Cleaner`, which needs **API 33**. `lintDebug` catches this (3 `NewApi`
