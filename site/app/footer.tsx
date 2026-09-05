@@ -30,6 +30,8 @@ export function Footer() {
             <div><a href={`${REPO}/blob/main/WHITEPAPER.md`}>White paper</a></div>
             <div><a href={REPO}>Source (GitHub)</a></div>
             <div><a href={`${REPO}/blob/main/LICENSE`}>License — Apache 2.0</a></div>
+            <div><Link href="/privacy/">Privacy Policy</Link></div>
+            <div><Link href="/terms/">Terms of Service</Link></div>
           </div>
         </div>
         <div style={{ marginTop: 32, fontSize: "0.85rem" }}>
