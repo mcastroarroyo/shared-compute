@@ -164,7 +164,7 @@ func (s *Server) Handler() http.Handler {
 		s.auth.Mount(mux)
 	}
 	s.mountAdmin(mux)
-	return withCORS(s.cfg.AppURL, logRequests(s.log, limitBody(maxRequestBytes, mux)))
+	return secureHeaders(withCORS(s.cfg.AppURL, logRequests(s.log, limitBody(maxRequestBytes, mux))))
 }
 
 // maxRequestBytes is a hard ceiling on any request body. Legitimate max-size
