@@ -46,19 +46,30 @@ type Server struct {
 	hub       *wshub.Hub
 	stripe    *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
 	quotes    *marketplace.Store
-	signer    *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
-	auth      *auth.Auth       // nil unless Postgres + an OAuth client are configured
+	signer    manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
+	auth      *auth.Auth      // nil unless Postgres + an OAuth client are configured
 	council   []council.Reviewer
 	councilDB *councilStore // nil unless SC_DATABASE_URL is set; persists the Council ledger
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
-	signer, err := manifest.NewSigner(cfg.ManifestSignerID, cfg.ManifestSigningKey)
-	if err != nil {
-		log.Error("manifest signer disabled", "err", err)
-		signer = nil
-	} else if signer != nil {
-		log.Info("workload manifest signing enabled", "signer_id", signer.ID())
+	var signer manifest.Signer
+	if cfg.ManifestKMSKey != "" {
+		ks, err := manifest.NewKMSSigner(context.Background(), cfg.ManifestSignerID, cfg.ManifestKMSKey)
+		if err != nil {
+			log.Error("manifest KMS signer disabled", "err", err)
+		} else {
+			signer = ks
+			log.Info("workload manifest signing enabled (Cloud KMS)", "signer_id", ks.ID())
+		}
+	} else {
+		ls, err := manifest.NewSigner(cfg.ManifestSignerID, cfg.ManifestSigningKey)
+		if err != nil {
+			log.Error("manifest signer disabled", "err", err)
+		} else if ls != nil {
+			signer = ls
+			log.Info("workload manifest signing enabled (local key)", "signer_id", ls.ID())
+		}
 	}
 	au, aerr := auth.New(context.Background(), cfg.DatabaseURL, auth.Config{
 		GitHubClientID: cfg.GitHubClientID, GitHubSecret: cfg.GitHubClientSecret,

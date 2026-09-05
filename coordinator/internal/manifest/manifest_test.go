@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func newTestSigner(t *testing.T) (*Signer, map[string]ed25519.PublicKey) {
+func newTestSigner(t *testing.T) (Signer, map[string]ed25519.PublicKey) {
 	t.Helper()
 	seed := make([]byte, ed25519.SeedSize)
 	if _, err := rand.Read(seed); err != nil {

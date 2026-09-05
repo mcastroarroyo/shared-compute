@@ -70,6 +70,10 @@ type Config struct {
 	ManifestSigningKey string
 	// ManifestSignerID is the signer identity carried in each manifest.
 	ManifestSignerID string
+	// ManifestKMSKey, when set, signs manifests with this Cloud KMS
+	// cryptoKeyVersion (EC_SIGN_ED25519) instead of a local seed. Takes
+	// precedence over ManifestSigningKey. Production setting.
+	ManifestKMSKey string
 
 	// --- spot tier (M10.5) ---
 	// SpotPriceFactor scales the whole quote (and provider accruals) for a spot
@@ -116,6 +120,7 @@ func Load() (Config, error) {
 		SpotEtaSlack:               getenvFloat("SC_SPOT_ETA_SLACK", 3),
 		ManifestSigningKey:         getenv("SC_MANIFEST_SIGNING_KEY", ""),
 		ManifestSignerID:           getenv("SC_MANIFEST_SIGNER_ID", "signer-v1"),
+		ManifestKMSKey:             getenv("SC_MANIFEST_KMS_KEY", ""),
 		GitHubClientID:             getenv("SC_GITHUB_CLIENT_ID", ""),
 		GitHubClientSecret:         getenv("SC_GITHUB_CLIENT_SECRET", ""),
 		GoogleClientID:             getenv("SC_GOOGLE_CLIENT_ID", ""),

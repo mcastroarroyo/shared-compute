@@ -84,16 +84,36 @@ func canonicalBytes(m WorkloadManifest) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// Signer holds the coordinator's isolated manifest key.
-type Signer struct {
+// Signer produces signed Workload Manifests. Two implementations: LocalSigner
+// (an Ed25519 seed from the environment — dev/small deployments) and KMSSigner
+// (Cloud KMS asymmetric signing — the private key never leaves the HSM/KMS).
+type Signer interface {
+	ID() string
+	PublicKeyB64() string
+	Sign(m WorkloadManifest) (SignedManifest, error)
+}
+
+// prepare stamps the fixed vocabulary, validates, and returns canonical bytes.
+func prepare(m *WorkloadManifest) ([]byte, error) {
+	m.ManifestVersion = Version
+	m.Operation = OperationInference
+	m.NetworkPolicy = NetworkPolicyNone
+	if err := validateStructure(*m); err != nil {
+		return nil, err
+	}
+	return canonicalBytes(*m)
+}
+
+// LocalSigner holds the coordinator's isolated manifest key in process memory.
+type LocalSigner struct {
 	id  string
 	key ed25519.PrivateKey
 	pub ed25519.PublicKey
 }
 
-// NewSigner parses a base64 (std, no padding tolerated either) 32-byte Ed25519
-// seed. An empty seed returns (nil, nil): manifest signing is simply disabled.
-func NewSigner(id, seedB64 string) (*Signer, error) {
+// NewSigner parses a base64 (std) 32-byte Ed25519 seed into a LocalSigner. An
+// empty seed returns (nil, nil): manifest signing is simply disabled.
+func NewSigner(id, seedB64 string) (Signer, error) {
 	if seedB64 == "" {
 		return nil, nil
 	}
@@ -108,24 +128,18 @@ func NewSigner(id, seedB64 string) (*Signer, error) {
 		id = "signer-v1"
 	}
 	key := ed25519.NewKeyFromSeed(seed)
-	return &Signer{id: id, key: key, pub: key.Public().(ed25519.PublicKey)}, nil
+	return &LocalSigner{id: id, key: key, pub: key.Public().(ed25519.PublicKey)}, nil
 }
 
 // ID is the signer identity carried in every SignedManifest.
-func (s *Signer) ID() string { return s.id }
+func (s *LocalSigner) ID() string { return s.id }
 
 // PublicKeyB64 is what the node needs to verify. Served at GET /v1/manifest-key.
-func (s *Signer) PublicKeyB64() string { return base64.StdEncoding.EncodeToString(s.pub) }
+func (s *LocalSigner) PublicKeyB64() string { return base64.StdEncoding.EncodeToString(s.pub) }
 
 // Sign fills in structural defaults and returns a SignedManifest.
-func (s *Signer) Sign(m WorkloadManifest) (SignedManifest, error) {
-	m.ManifestVersion = Version
-	m.Operation = OperationInference
-	m.NetworkPolicy = NetworkPolicyNone
-	if err := validateStructure(m); err != nil {
-		return SignedManifest{}, err
-	}
-	cb, err := canonicalBytes(m)
+func (s *LocalSigner) Sign(m WorkloadManifest) (SignedManifest, error) {
+	cb, err := prepare(&m)
 	if err != nil {
 		return SignedManifest{}, err
 	}

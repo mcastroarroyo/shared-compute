@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func tryParseChain(ev androidKeyEvidence) ([]*x509.Certificate, error) {
@@ -54,7 +55,7 @@ func loadFixtureChain(t *testing.T) androidKeyEvidence {
 func TestPixelChainVerifiesToGoogleRoot(t *testing.T) {
 	ev := loadFixtureChain(t)
 	chain := parseChain(t, ev)
-	if err := verifyChainToGoogleRoot(chain); err != nil {
+	if err := verifyChainToGoogleRootAt(chain, fixtureNow(chain)); err != nil {
 		t.Fatalf("chain should verify: %v", err)
 	}
 }
@@ -86,7 +87,7 @@ func TestTamperedLeafFailsChain(t *testing.T) {
 	if err != nil {
 		return // parse itself may reject it — also acceptable
 	}
-	if err := verifyChainToGoogleRoot(chain); err == nil {
+	if err := verifyChainToGoogleRootAt(chain, fixtureNow(chain)); err == nil {
 		t.Fatal("tampered leaf should not verify")
 	}
 }
@@ -115,7 +116,7 @@ func TestVerifyAndroidKeyFixtureReachesDeviceAttested(t *testing.T) {
 	// full Verify() can't run end to end; this guards the chain + policy portion.
 	ev := loadFixtureChain(t)
 	chain := parseChain(t, ev)
-	if err := verifyChainToGoogleRoot(chain); err != nil {
+	if err := verifyChainToGoogleRootAt(chain, fixtureNow(chain)); err != nil {
 		t.Fatalf("chain: %v", err)
 	}
 	kd, err := parseKeyDescription(chain[0])
@@ -125,4 +126,14 @@ func TestVerifyAndroidKeyFixtureReachesDeviceAttested(t *testing.T) {
 	if kd.securityLevel < 1 || kd.verifiedBootState != 0 || !kd.deviceLocked {
 		t.Fatalf("policy inputs not satisfied: %+v", *kd)
 	}
+}
+
+// fixtureNow pins verification inside the captured chain's validity window:
+// Google's RKP attestation intermediates (chain[1]) are short-lived (~2 weeks),
+// so a snapshot fixture cannot be verified against the wall clock forever.
+func fixtureNow(chain []*x509.Certificate) time.Time {
+	if len(chain) > 1 {
+		return chain[1].NotBefore.Add(time.Hour)
+	}
+	return time.Now()
 }

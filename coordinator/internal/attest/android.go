@@ -120,7 +120,14 @@ func verifyAndroidKey(raw json.RawMessage, staticPK [32]byte) (*AndroidKeyResult
 // certs routinely outlive their own NotAfter, so leaf expiry is not fatal; CA
 // validity is enforced.
 func verifyChainToGoogleRoot(chain []*x509.Certificate) error {
-	now := time.Now()
+	return verifyChainToGoogleRootAt(chain, time.Now())
+}
+
+// verifyChainToGoogleRootAt is verifyChainToGoogleRoot evaluated at an explicit
+// instant. Production always uses the wall clock (a phone presents a freshly
+// provisioned chain on every registration — Google's RKP intermediates live
+// ~2 weeks); tests pin `now` inside a captured fixture's validity window.
+func verifyChainToGoogleRootAt(chain []*x509.Certificate, now time.Time) error {
 	for i := 0; i < len(chain)-1; i++ {
 		if err := chain[i].CheckSignatureFrom(chain[i+1]); err != nil {
 			return fmt.Errorf("android_key: cert[%d] not signed by cert[%d]: %w", i, i+1, err)

@@ -28,7 +28,7 @@ type Deps struct {
 	Job      *jobs.Manager
 	Cfg      config.Config
 	Log      *slog.Logger
-	Manifest *manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
+	Manifest manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
 }
 
 type Request struct {
@@ -219,7 +219,7 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 // signJobManifest builds and signs a Workload Manifest v1 for one job. Hashes
 // are deterministic derivations for v1 (the node structurally validates them);
 // real registry hashes land with the signed model-registry integration.
-func signJobManifest(s *manifest.Signer, jobID string, prov *registry.Provider, req Request, ptRaw []byte, deadlineMS int64) (json.RawMessage, error) {
+func signJobManifest(s manifest.Signer, jobID string, prov *registry.Provider, req Request, ptRaw []byte, deadlineMS int64) (json.RawMessage, error) {
 	now := time.Now().Unix()
 	maxOut := req.Params.MaxTokens
 	sm, err := s.Sign(manifest.WorkloadManifest{
