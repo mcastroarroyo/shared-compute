@@ -23,18 +23,12 @@ Built and verified 2026-09-05; runbook in `infra/gcp/README.md`.
    gcloud compute backend-services update ayni-api-backend-sl --global --security-policy=ayni-api-policy --project=ayni1-507216
    ```
    (Then optionally delete the unused `ayni-api-backend`.)
-2. **Secrets** — paste the live values (then redeploy with `infra/gcp/deploy.sh`):
-   ```bash
-   printf '%s' 'sk_live_…' | gcloud secrets versions add SC_STRIPE_SECRET_KEY --project=ayni1-507216 --data-file=-
-   printf '%s' 'whsec_…'   | gcloud secrets versions add SC_STRIPE_WEBHOOK_SECRET --project=ayni1-507216 --data-file=-
-   printf '%s' 'whsec_…'   | gcloud secrets versions add SC_STRIPE_CONNECT_WEBHOOK_SECRET --project=ayni1-507216 --data-file=-
-   printf '%s' '…'         | gcloud secrets versions add SC_GITHUB_CLIENT_SECRET --project=ayni1-507216 --data-file=-
-   ```
-3. **Cutover** (after 1–2 and the cert shows ACTIVE): in Cloudflare change `api.ayni-ai.com` from the Fly CNAME to an `A` record → `34.160.126.149` (DNS only). Providers reconnect on their own; any provider on `SC_REQUIRE_MANIFEST=1` must switch `SC_MANIFEST_VERIFY_KEY=ayni-coordinator-kms-v1:6QPfm1yfsgQJp2s5sRb+jqUPZC/fLXJJNnEwgWZb4vY=`.
+2. ~~Secrets~~ **Done (2026-09-05).** Live values added by the owner through the Secret Manager console: GitHub client secret, Stripe live secret key, and the signing secrets of two new Stripe event destinations (`ayni-billing` → `/billing/webhook`, snapshot events `checkout.session.completed` + `checkout.session.async_payment_succeeded`; `ayni-payouts` → `/payouts/webhook`, thin events `v2.core.account[requirements].updated` + `v2.core.account[configuration.recipient].capability_status_updated`). Verified from GCP: live Checkout session created (200), Connect module mounted, both webhook routes reject bad signatures (400), GitHub OAuth redirect works. `deploy.sh` now pins each secret to its newest *enabled* version (Cloud Run's `latest` alias resolves to a disabled version and fails the revision).
+3. ~~Cutover~~ **Done (2026-09-05).** `api.ayni-ai.com` is an `A` record → `34.160.126.149` (DNS only) in Cloudflare; resolvers return the GCP IP. Fly stays up as a fallback until 24 h clean, then scale to zero. Providers on `SC_REQUIRE_MANIFEST=1` must switch `SC_MANIFEST_VERIFY_KEY=ayni-coordinator-kms-v1:6QPfm1yfsgQJp2s5sRb+jqUPZC/fLXJJNnEwgWZb4vY=`.
 4. GitHub OAuth end-to-end: GitHub disables its **Authorize** button for automated clicks — open `app.ayni-ai.com`, Continue with GitHub, click Authorize yourself.
 
 ### QA this round
-- GCP public Cloud Run URL, full `scripts/qa-prod.sh`: **31/35**. The 4 misses are expected for the new stack: 2× `device_attested` (no phone connected to GCP yet) and 2× `insufficient_credit` (the GCP consumer key has a zero balance under `SC_BILLING_ENFORCE=1`; it gets funded through the first live Stripe checkout once the Stripe secrets land).
+- GCP public Cloud Run URL, full `scripts/qa-prod.sh`: **31/35** (re-run after Stripe went live: still 31/35, `billing/checkout -> 200`). The 4 misses are expected for the new stack: 2× `device_attested` (no phone connected to GCP yet) and 2× `insufficient_credit` (the GCP consumer key has a zero balance under `SC_BILLING_ENFORCE=1`; it gets funded through the first live Stripe checkout once the Stripe secrets land).
 - Local: Go (race) / Rust / Python harness (23/23) / all four web builds / schema + prompt-logging guards — **all green** after fixing the one failure found: the Android attestation fixture had aged out (Google RKP intermediates live ~2 weeks) — tests now verify at a pinned time; production keeps wall-clock.
 - Live prod (Fly): `scripts/qa-prod.sh` **33/35**; the 2 misses are the `device_attested` cases (the Pixel was offline; only the Mac provider was connected).
 - Demo (`demo.ayni-ai.com`): sample → $0.01 quote → 3-seat Council APPROVE → summary returned by a Mac in 1.7 s, content-free record.
