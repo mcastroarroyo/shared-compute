@@ -2,7 +2,7 @@
 
 | Service | URL | Host |
 |---|---|---|
-| Coordinator API | https://api.ayni-ai.com | Fly.io `ayni-coordinator` + Fly Postgres |
+| Coordinator API | https://api.ayni-ai.com | Fly.io `ayni-coordinator` + Fly Postgres (current) → **GCP Cloud Run `ayni-coordinator` + Cloud SQL `ayni-pg`, project `ayni1-507216`** (built, awaiting org-policy exception + DNS cutover; see `infra/gcp/README.md`) |
 | Model registry | https://models.ayni-ai.com | Cloudflare R2 bucket `models` |
 | Marketing site | https://ayni-ai.com | Cloudflare Pages (root dir `site`) |
 | Signed-in app | https://app.ayni-ai.com | Cloudflare Pages `ayni-app` (root dir `webapp`) |
