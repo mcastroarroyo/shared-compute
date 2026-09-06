@@ -27,12 +27,10 @@ s=$(curl -s -N -X POST "$API/v1/chat/completions" -H "Authorization: Bearer $KEY
 echo "$s" | grep -q 'data:' && ok "stream emits SSE data:" || no "stream: $s"
 
 echo "== 3. batch fan-out =="
-r=$(j -X POST "$API/v1/batch" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{
- "model":"qwen2.5-0.5b-instruct-q4_k_m","max_tokens":40,"items":[
- {"messages":[{"role":"user","content":"one word: sky"}]},
- {"messages":[{"role":"user","content":"one word: sea"}]},
- {"messages":[{"role":"user","content":"one word: sun"}]},
- {"messages":[{"role":"user","content":"one word: ice"}]}]}')
+# Compact, single-line body — Cloud Armor's protocol-attack rule (OWASP CRS
+# 921150) flags literal CR/LF sequences inside a request body, which a
+# multi-line -d string would send; real traffic (JSON.stringify) is compact.
+r=$(j -X POST "$API/v1/batch" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{"model":"qwen2.5-0.5b-instruct-q4_k_m","max_tokens":40,"items":[{"messages":[{"role":"user","content":"one word: sky"}]},{"messages":[{"role":"user","content":"one word: sea"}]},{"messages":[{"role":"user","content":"one word: sun"}]},{"messages":[{"role":"user","content":"one word: ice"}]}]}')
 echo "$r" | python3 -c "import sys,json;d=json.load(sys.stdin);s=d['stats'];print('   stats',s);exit(0 if s['ok']==4 and s['failed']==0 else 1)" \
   && ok "batch 4/4 ok" || no "batch: $r"
 
@@ -45,10 +43,7 @@ echo "$r" | python3 -c "import sys,json;d=json.load(sys.stdin);e=d['estimate'];p
   && ok "spot quote has eta band" || no "spot quote: $r"
 
 echo "== 5. workloads: quote -> council -> accept -> run -> settle =="
-r=$(j -X POST "$API/v1/workloads" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{
- "model":"qwen2.5-0.5b-instruct-q4_k_m","items":[
- {"messages":[{"role":"user","content":"Summarize: the water cycle moves water through evaporation, condensation, and precipitation."}],"max_tokens":80},
- {"messages":[{"role":"user","content":"Summarize: photosynthesis converts light, water, and CO2 into glucose and oxygen."}],"max_tokens":80}]}')
+r=$(j -X POST "$API/v1/workloads" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{"model":"qwen2.5-0.5b-instruct-q4_k_m","items":[{"messages":[{"role":"user","content":"Summarize: the water cycle moves water through evaporation, condensation, and precipitation."}],"max_tokens":80},{"messages":[{"role":"user","content":"Summarize: photosynthesis converts light, water, and CO2 into glucose and oxygen."}],"max_tokens":80}]}')
 wid=$(echo "$r" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('id',''))" 2>/dev/null)
 echo "$r" | python3 -c "import sys,json;d=json.load(sys.stdin);c=d.get('council',{});print('   quote',d['id'],'$',d['price']['total_usd'],'council',c.get('decision'),'reviews',len(c.get('reviews',[])))" || no "workload create: $r"
 [ -n "$wid" ] && ok "workload created w/ council" || no "no workload id"
@@ -62,8 +57,7 @@ echo "$acc" | python3 -c "import sys,json;d=json.load(sys.stdin);rr=d.get('run_r
 dc=$(code -X POST "$API/v1/workloads/$wid/accept" -H "Authorization: Bearer $KEY"); [ "$dc" = 409 ] && ok "double-accept -> 409" || no "double-accept -> $dc"
 
 echo "== 6. workloads pinned to device_attested (phone) =="
-r=$(j -X POST "$API/v1/workloads" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -H 'X-Provider-Trust-Level: device_attested' -d '{
- "model":"qwen2.5-0.5b-instruct-q4_k_m","items":[{"messages":[{"role":"user","content":"one sentence on trust"}],"max_tokens":50}]}')
+r=$(j -X POST "$API/v1/workloads" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -H 'X-Provider-Trust-Level: device_attested' -d '{"model":"qwen2.5-0.5b-instruct-q4_k_m","items":[{"messages":[{"role":"user","content":"one sentence on trust"}],"max_tokens":50}]}')
 wid2=$(echo "$r" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 echo "$r" | python3 -c "import sys,json;d=json.load(sys.stdin);print('   tier',d.get('tier'));exit(0 if d.get('tier')=='device_attested' else 1)" && ok "quote tier=device_attested" || no "tier: $r"
 acc=$(j -X POST "$API/v1/workloads/$wid2/accept" -H "Authorization: Bearer $KEY")
