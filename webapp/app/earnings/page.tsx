@@ -31,7 +31,7 @@ export default function Earnings() {
           <div className="card" style={{ maxWidth: 360, marginTop: 12 }}>
             <div className="kv">
               <span>Accrued, unpaid</span>
-              <span className="big">${e.owed_usd.toFixed(2)}</span>
+              <span className="big">${e.owed_usd > 0 && e.owed_usd < 0.01 ? e.owed_usd.toFixed(5) : e.owed_usd.toFixed(2)}</span>
             </div>
             <div className="kv">
               <span>Jobs completed</span>
