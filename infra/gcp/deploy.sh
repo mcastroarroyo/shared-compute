@@ -43,7 +43,10 @@ SERVING_REV="$(gcloud run services describe "$SVC" --project="$P" --region="$R" 
   --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
 SERVING_TAG="$(gcloud run services describe "$SVC" --project="$P" --region="$R" \
   --format='value(status.traffic[0].tag)' 2>/dev/null || true)"
-if [ -n "$SERVING_REV" ] && [ -z "$SERVING_TAG" ]; then
+# Also re-tag when the serving revision carries the tag we are about to reuse
+# (same image redeployed): the tag will move to the new revision and the old one
+# would otherwise lose its URL before it is drained.
+if [ -n "$SERVING_REV" ] && { [ -z "$SERVING_TAG" ] || [ "$SERVING_TAG" = "$NEW_TAG" ]; }; then
   SERVING_TAG="prev-$(printf '%s' "$SERVING_REV" | sed -E 's/.*-([0-9]+)-[a-z0-9]+$/\1/')"
   gcloud run services update-traffic "$SVC" --project="$P" --region="$R" \
     --update-tags="$SERVING_TAG=$SERVING_REV" --quiet >/dev/null 2>&1 || true
