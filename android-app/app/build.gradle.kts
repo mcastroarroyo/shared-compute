@@ -15,14 +15,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "dev.ayni.provider"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.ayni.provider"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        targetSdk = 36
+        versionCode = 3
+        versionName = "0.2.1"
         // The native lib is produced by ../build-native.sh into src/main/jniLibs.
         ndk { abiFilters += listOf("arm64-v8a") }
     }
