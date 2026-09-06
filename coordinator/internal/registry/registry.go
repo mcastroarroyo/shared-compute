@@ -22,6 +22,11 @@ type Provider struct {
 	// Send delivers a message frame to this provider. Set by the WebSocket hub.
 	// Safe for concurrent use.
 	Send func(v any) error
+	// Close asks the hub to drop this provider's connection with a reason the
+	// node logs; the node reconnects on its own. Used by /admin/drain so a
+	// superseded Cloud Run revision can hand its providers to the new one
+	// instead of holding them until the WebSocket timeout. Nil in tests.
+	Close func(reason string)
 
 	mu       sync.Mutex
 	active   int // in-flight jobs assigned here

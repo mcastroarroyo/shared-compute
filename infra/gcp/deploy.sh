@@ -30,11 +30,19 @@ for s in SC_GITHUB_CLIENT_ID SC_GITHUB_CLIENT_SECRET SC_STRIPE_SECRET_KEY SC_STR
 done
 SECRETS="${SECRETS#,}"
 
+# Revisions get a traffic tag so the previous one stays addressable after the
+# rollout: Cloud Run keeps a superseded instance alive while provider WebSockets
+# are open, so we tell it to drain and the providers reconnect to the new revision.
+ADMIN_TOKEN="$(gcloud secrets versions access latest --secret=SC_ADMIN_TOKEN --project="$P" 2>/dev/null || true)"
+PREV_TAG_URLS="$(gcloud run services describe "$SVC" --project="$P" --region="$R" \
+  --format='value(status.traffic[].url)' 2>/dev/null | tr ';' '\n' | grep -E '^https://r[0-9a-f]+---' || true)"
+NEW_TAG="r$(printf '%s' "$TAG" | tr -cd '0-9a-z' | cut -c1-12)"
+
 echo "==> deploying $IMG to Cloud Run $SVC ($R)"
 gcloud run deploy "$SVC" --project="$P" --region="$R" \
   --image="$IMG" \
   --service-account="$SA" \
-  --platform=managed --ingress=all --allow-unauthenticated \
+  --platform=managed --ingress=all --allow-unauthenticated --tag="$NEW_TAG" \
   --port=8080 --cpu=1 --memory=512Mi \
   --min-instances=1 --max-instances=3 --concurrency=250 \
   --timeout=3600 --session-affinity --no-cpu-throttling \
@@ -46,3 +54,13 @@ gcloud run deploy "$SVC" --project="$P" --region="$R" \
 
 URL="$(gcloud run services describe "$SVC" --project="$P" --region="$R" --format='value(status.url)')"
 echo "==> $URL"; curl -fsS "$URL/health"; echo
+
+# Hand providers over: drain every previously tagged revision, then drop its tag.
+for u in $PREV_TAG_URLS; do
+  [ -n "$ADMIN_TOKEN" ] || break
+  echo "==> draining providers on $u"
+  curl -fsS -m 20 -X POST "$u/admin/drain" -H "Authorization: Bearer $ADMIN_TOKEN" || echo "   (drain unavailable on that revision)"
+  echo
+  t="$(printf '%s' "$u" | sed -E 's#^https://([^-]+)---.*#\1#')"
+  [ "$t" = "$NEW_TAG" ] || gcloud run services update-traffic "$SVC" --project="$P" --region="$R" --remove-tags="$t" --quiet >/dev/null 2>&1 || true
+done

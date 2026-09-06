@@ -23,6 +23,7 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.Handle("POST /admin/keys/{id}/disable", s.withAdmin(s.adminSetKey(true)))
 	mux.Handle("POST /admin/keys/{id}/enable", s.withAdmin(s.adminSetKey(false)))
 	mux.Handle("GET /admin/providers", s.withAdmin(s.adminProviders))
+	mux.Handle("POST /admin/drain", s.withAdmin(s.adminDrain))
 	mux.Handle("GET /admin/nodes", s.withAdmin(s.adminNodes))
 	mux.Handle("GET /admin/usage", s.withAdmin(s.adminUsage))
 	mux.Handle("GET /admin/earnings", s.withAdmin(s.adminEarnings))
@@ -210,4 +211,22 @@ func (s *Server) adminEarnings(w http.ResponseWriter, r *http.Request) {
 		"provider_micros_total": provTotal,
 		"provider_usd_total":    float64(provTotal) / 1_000_000,
 	})
+}
+
+// adminDrain disconnects every provider on THIS instance. Providers reconnect
+// within seconds and land on whichever revision currently receives traffic.
+// deploy.sh calls it on the previous revision after a rollout, because Cloud
+// Run keeps a superseded instance alive while its WebSockets are open, which
+// would otherwise strand every provider on an instance the scheduler no longer
+// sees for up to the request timeout.
+func (s *Server) adminDrain(w http.ResponseWriter, _ *http.Request) {
+	n := 0
+	for _, p := range s.reg.Snapshot() {
+		if p.Close != nil {
+			p.Close("coordinator draining: reconnect")
+			n++
+		}
+	}
+	s.log.Info("admin drain", "providers", n)
+	writeJSON(w, http.StatusOK, map[string]any{"drained": n})
 }

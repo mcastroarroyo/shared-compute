@@ -132,6 +132,9 @@ func (h *Hub) HandleProvider(w http.ResponseWriter, r *http.Request) {
 		ConnectedAt:  time.Now(),
 		LastSeen:     time.Now(),
 		Send:         c.send,
+		Close: func(reason string) {
+			_ = ws.Close(websocket.StatusGoingAway, reason)
+		},
 	}
 	h.Reg.Add(p)
 	metrics.ProvidersConnected.Inc()
