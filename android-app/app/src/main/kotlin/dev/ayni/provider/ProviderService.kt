@@ -27,7 +27,17 @@ class ProviderService : Service() {
         super.onCreate()
         store = ConfigStore(this)
         createChannel()
-        startForeground(NOTIF_ID, notification("starting…"))
+        try {
+            startForeground(NOTIF_ID, notification("starting…"))
+        } catch (e: IllegalStateException) {
+            // Android 14+ forbids starting a dataSync foreground service from the
+            // background (e.g. BOOT_COMPLETED). Crashing here would make
+            // ActivityManager restart-loop the service; instead leave a tap-to-
+            // resume notification and exit cleanly.
+            postResumeNotification(this, "Sharing paused after restart — tap to resume")
+            stopSelf()
+            return
+        }
         loop()
     }
 
@@ -113,7 +123,34 @@ class ProviderService : Service() {
     companion object {
         const val CHANNEL = "provider"
         const val NOTIF_ID = 1
+        const val RESUME_NOTIF_ID = 2
         const val ACTION_STOP = "dev.ayni.provider.STOP"
+        const val EXTRA_AUTOSTART = "dev.ayni.provider.AUTOSTART"
+
+        /** A normal (non-foreground) notification that opens the app and resumes sharing. */
+        fun postResumeNotification(ctx: android.content.Context, text: String) {
+            val nm = ctx.getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL, "Provider", NotificationManager.IMPORTANCE_LOW)
+            )
+            val open = Intent(ctx, MainActivity::class.java)
+                .putExtra(EXTRA_AUTOSTART, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            nm.notify(
+                RESUME_NOTIF_ID,
+                NotificationCompat.Builder(ctx, CHANNEL)
+                    .setSmallIcon(android.R.drawable.stat_sys_upload)
+                    .setContentTitle("Ayni Provider")
+                    .setContentText(text)
+                    .setAutoCancel(true)
+                    .setContentIntent(
+                        android.app.PendingIntent.getActivity(
+                            ctx, 1, open, android.app.PendingIntent.FLAG_IMMUTABLE
+                        )
+                    )
+                    .build()
+            )
+        }
 
         fun start(ctx: android.content.Context) {
             ConfigStore(ctx).setSharingEnabled(true)

@@ -21,7 +21,14 @@ class BootReceiver : BroadcastReceiver() {
         val store = ConfigStore(context)
         val s = store.load()
         if (s.isConfigured && store.isSharingEnabled()) {
-            ProviderService.start(context)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14+: a dataSync foreground service may not be started from
+                // BOOT_COMPLETED. One tap on the notification brings the app to the
+                // foreground, where starting the service is allowed.
+                ProviderService.postResumeNotification(context, "Device restarted — tap to resume sharing")
+            } else {
+                ProviderService.start(context)
+            }
         }
     }
 }

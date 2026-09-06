@@ -52,6 +52,11 @@ private const val GAUGE_MAX = 40.0 // tokens/sec full-scale for a phone-class no
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.getBooleanExtra(ProviderService.EXTRA_AUTOSTART, false) == true &&
+            ConfigStore(this).load().isConfigured
+        ) {
+            ProviderService.start(this) // foreground now, so the FGS start is allowed
+        }
         setContent { MaterialTheme(colorScheme = darkColorScheme()) { Surface { App() } } }
     }
 }
