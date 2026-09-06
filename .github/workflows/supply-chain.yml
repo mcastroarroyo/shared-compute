@@ -27,7 +27,7 @@ jobs:
   npm-audit:
     runs-on: ubuntu-latest
     strategy: { matrix: { dir: [site, webapp, demo, console] } }
-    defaults: { run: { working-directory: ${{ matrix.dir }} } }
+    defaults: { run: { working-directory: "${{ matrix.dir }}" } }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
