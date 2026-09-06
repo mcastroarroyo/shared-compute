@@ -134,7 +134,14 @@ func (s *Server) Handler() http.Handler {
 	// what the load balancer and uptime checks use there.
 	mux.Handle("GET /health", instrument("healthz", http.HandlerFunc(s.handleHealth)))
 	mux.Handle("GET /livez", instrument("healthz", http.HandlerFunc(s.handleHealth)))
-	mux.Handle("GET /metrics", promhttp.Handler())
+	// Prometheus metrics carry route names, provider counts and latency
+	// histograms: operational detail, not public data. Behind the admin token
+	// when one is configured (production); open only in local/dev setups.
+	if s.cfg.AdminToken != "" {
+		mux.Handle("GET /metrics", s.withAdmin(promhttp.Handler().ServeHTTP))
+	} else {
+		mux.Handle("GET /metrics", promhttp.Handler())
+	}
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("GET /v1/manifest-key", instrument("v1_manifest_key", http.HandlerFunc(s.handleManifestKey)))
 	mux.Handle("GET /install/provider.sh", instrument("install_provider", http.HandlerFunc(s.handleInstallScript)))
