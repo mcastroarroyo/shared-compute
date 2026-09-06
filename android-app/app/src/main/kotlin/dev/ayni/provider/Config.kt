@@ -47,7 +47,7 @@ class ConfigStore(context: Context) {
 
     fun save(s: ProviderSettings) = sp.edit().apply {
         putString("url", s.coordinatorUrl)
-        putString("token", s.registrationToken)
+        putString("token", normalizeToken(s.registrationToken))
         putString("model", s.model)
         putString("backend", s.backend)
         putString("manifestUrl", s.manifestUrl)
@@ -65,4 +65,15 @@ class ConfigStore(context: Context) {
     // reboot without needing the whole ProviderSettings round-trip.
     fun setSharingEnabled(v: Boolean) = sp.edit().putBoolean("sharingEnabled", v).apply()
     fun isSharingEnabled(): Boolean = sp.getBoolean("sharingEnabled", false)
+}
+
+/**
+ * People paste the whole install command from the Share page into the token
+ * field ("curl … SC_REGISTRATION_TOKEN=sc_prov_… bash"). Pull the token out of
+ * whatever was pasted; otherwise just trim whitespace.
+ */
+fun normalizeToken(raw: String): String {
+    val t = raw.trim()
+    Regex("""(sc_prov_[0-9a-f]{16,}|play-review-[0-9a-f]{8,})""").find(t)?.let { return it.value }
+    return t.substringAfter("SC_REGISTRATION_TOKEN=", t).substringBefore(' ').trim()
 }
