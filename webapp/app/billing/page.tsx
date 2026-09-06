@@ -49,12 +49,12 @@ export default function Billing() {
       )}
       {status === "cancel" && <p className="muted">Nothing was charged. You can add credit any time from the dashboard.</p>}
       {me && (
-        <section className="card" style={{ maxWidth: 420, marginTop: 18 }}>
-          <div className="row">
+        <div className="card" style={{ maxWidth: 360, marginTop: 18 }}>
+          <div className="kv">
             <span>Credit balance</span>
             <span className="big">${me.credit_usd.toFixed(2)}</span>
           </div>
-        </section>
+        </div>
       )}
       <p style={{ marginTop: 22 }}>
         <Link href="/run/" className="btn">Run a workload</Link>
