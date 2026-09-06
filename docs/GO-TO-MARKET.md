@@ -86,6 +86,9 @@ admin endpoints (200 with token, 401 without), and the negative set
   process — added a `BootReceiver` (resumes sharing after a reboot if it was on) and a
   battery-optimization-exemption prompt while sharing is active.
 
+### Repository
+Made public on 2026-09-06 (pre-scan: no tracked secrets, gitleaks clean). The site's "Source (GitHub)" link and the desktop installer's prebuilt-binary download now work for anonymous users.
+
 ### Android — Play Store launch (in progress, 2026-09-05)
 - **Build:** `android-app` v0.2.0 (versionCode 2), signed release AAB with the `upload.jks` upload key (CN=Ayni Provider Upload, O=Zalesgen LLC). Pins the production KMS manifest key and requires signed manifests (fail-closed, like the desktop daemon). Lint enforced; the uniffi `Cleaner` NewApi warning is a static false positive (runtime reflection fallback to the JNA cleaner below API 33) and is scoped out in `app/lint.xml`, so **minSdk stays 26 — decided**.
 - **Attestation expiry (found on the real Pixel, fixed):** the phone came back as `community` with "android_key: intermediate cert[1] outside validity window". Android key-attestation chains are fixed at key-generation time and the RKP intermediate is short-lived, so a device that generated its key weeks ago silently drops to Tier 0. `HardwareIdentity.ensureKey` now regenerates the hardware key when any cert in the chain is within 24 h of expiry. Same root cause as the coordinator test-fixture failure earlier today.
