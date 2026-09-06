@@ -36,6 +36,17 @@ SC_REGISTRATION_TOKEN=${tok} \\
         ← Dashboard
       </Link>
       <h1 style={{ marginTop: 12 }}>Share your computer</h1>
+      <section className="card" style={{ margin: "14px 0" }}>
+        <h3>Phone app (Android)</h3>
+        <p className="muted">
+          Install Ayni from Google Play, open Settings in the app and paste this
+          registration token, then Save and Start.
+        </p>
+        <pre className="code" style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{tok}</pre>
+        <button className="btn" onClick={() => copy("token", tok)}>
+          {copied === "token" ? "Copied" : "Copy token"}
+        </button>
+      </section>
       <p className="muted" style={{ margin: "8px 0 22px" }}>
         Your machine joins the network as a provider. It runs only while the command is
         running — close the terminal to stop. Earnings for every job it completes accrue

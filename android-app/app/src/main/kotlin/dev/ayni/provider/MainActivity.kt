@@ -1,5 +1,9 @@
 package dev.ayni.provider
 
+import androidx.compose.runtime.LaunchedEffect
+
+import androidx.compose.foundation.layout.Row
+
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -235,7 +239,16 @@ private fun App() {
                 keyboard = KeyboardType.Number
             ) { s = s.copy(minBatteryPct = it.toIntOrNull()?.coerceIn(0, 100) ?: s.minBatteryPct) }
 
-            Button(onClick = { store.save(s) }) { Text("Save settings") }
+            var savedAt by remember { mutableStateOf(0L) }
+            val justSaved = savedAt > 0 && System.currentTimeMillis() - savedAt < 2500
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { store.save(s); savedAt = System.currentTimeMillis() },
+                    enabled = !justSaved,
+                ) { Text(if (justSaved) "Saved ✓" else "Save settings") }
+                if (justSaved) Text("Settings saved. Tap Start to connect.", style = MaterialTheme.typography.bodySmall)
+            }
+            if (justSaved) LaunchedEffect(savedAt) { kotlinx.coroutines.delay(2600); savedAt = 0 }
         }
     }
 }
