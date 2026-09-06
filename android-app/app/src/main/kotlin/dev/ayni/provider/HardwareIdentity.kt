@@ -85,7 +85,19 @@ object HardwareIdentity {
     private fun ensureKey(ctx: android.content.Context): Boolean {
         val ks = KeyStore.getInstance(KS).apply { load(null) }
         val wantStrongBox = hasStrongBox(ctx)
-        if (ks.containsAlias(ALIAS)) return wantStrongBox
+        if (ks.containsAlias(ALIAS)) {
+            // Key attestation chains are fixed at key-generation time and the
+            // RKP-issued intermediate is short-lived (weeks). Once any cert in the
+            // chain is within a day of expiry the coordinator would reject the
+            // evidence ("intermediate cert outside validity window") and demote
+            // the device to Tier 0 — so mint a fresh key + chain instead of reusing.
+            val soon = java.util.Date(System.currentTimeMillis() + 24L * 3600 * 1000)
+            val chain = ks.getCertificateChain(ALIAS)?.map { it as X509Certificate }
+            val stale = chain == null || chain.any { it.notAfter.before(soon) }
+            if (!stale) return wantStrongBox
+            Log.i(TAG, "attestation chain expired or expiring; regenerating hardware key")
+            ks.deleteEntry(ALIAS)
+        }
 
         // A stable per-install challenge is fine: freshness comes from the binding
         // signature over a per-session nonce + timestamp, checked by the coordinator.
