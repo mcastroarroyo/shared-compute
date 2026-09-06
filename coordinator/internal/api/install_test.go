@@ -53,4 +53,9 @@ func TestInstallScriptDefaults(t *testing.T) {
 	if !strings.Contains(body, "https://models.ayni-ai.com/") {
 		t.Errorf("missing default model URL")
 	}
+	for _, want := range []string{`https://api.ayni-ai.com/v1/manifest-key`, `SC_MANIFEST_VERIFY_KEY="$VERIFY_KEY"`, `SC_REQUIRE_MANIFEST="${SC_REQUIRE_MANIFEST:-1}"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("installer must pin the manifest key; missing %q", want)
+		}
+	}
 }

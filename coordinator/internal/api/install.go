@@ -44,10 +44,10 @@ BIN="$DIR/provider-daemon"
 if [ ! -x "$BIN" ]; then
   url="%s/releases/download/provider-latest/${asset}"
   echo "==> fetching $asset"
-  if curl -fsSL "$url" -o "$BIN" 2>/dev/null; then
+  if curl -fSL --retry 3 --retry-delay 2 "$url" -o "$BIN"; then
     chmod +x "$BIN"
   else
-    echo "==> no prebuilt binary for $os/$arch; building from source (needs Rust + CMake)"
+    echo "==> prebuilt binary download failed for $os/$arch; building from source (needs Rust + CMake)"
     [ -d "$DIR/src" ] || git clone --depth 1 %s "$DIR/src"
     ( cd "$DIR/src/provider-core" && cargo build --release --bin provider-daemon --features llama )
     cp "$DIR/src/provider-core/target/release/provider-daemon" "$BIN"
@@ -59,6 +59,15 @@ if [ ! -f "$DIR/models/$MODEL.gguf" ]; then
   curl -fSL "$MODEL_URL" -o "$DIR/models/$MODEL.gguf"
 fi
 
+# Pin the coordinator's Workload Manifest signing key so this node only runs
+# jobs the coordinator actually signed (fail closed, like the phone app).
+KEY_JSON="$(curl -fsSL "%s/v1/manifest-key" 2>/dev/null || true)"
+SIGNER="$(printf '%%s' "$KEY_JSON" | sed -n 's/.*"signer_id":"\([^"]*\)".*/\1/p')"
+PUBKEY="$(printf '%%s' "$KEY_JSON" | sed -n 's/.*"public_key":"\([^"]*\)".*/\1/p')"
+VERIFY_KEY="${SC_MANIFEST_VERIFY_KEY:-}"
+if [ -z "$VERIFY_KEY" ] && [ -n "$SIGNER" ] && [ -n "$PUBKEY" ]; then VERIFY_KEY="$SIGNER:$PUBKEY"; fi
+[ -n "$VERIFY_KEY" ] && echo "==> manifest signing key pinned: ${VERIFY_KEY%%%%:*}"
+
 echo "==> connecting to $COORD_WS"
 exec env \
   SC_COORDINATOR_URL="$COORD_WS" \
@@ -67,8 +76,10 @@ exec env \
   SC_MODEL_PATH="$DIR/models/$MODEL.gguf" \
   SC_BACKEND="${SC_BACKEND:-llama}" \
   SC_IDENTITY_PATH="$DIR/identity.key" \
+  SC_MANIFEST_VERIFY_KEY="$VERIFY_KEY" \
+  SC_REQUIRE_MANIFEST="${SC_REQUIRE_MANIFEST:-1}" \
   "$BIN"
-`, ws, model, modelURL, repo, repo)
+`, ws, model, modelURL, repo, repo, apiBase)
 
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

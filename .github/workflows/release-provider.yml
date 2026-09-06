@@ -67,12 +67,18 @@ jobs:
           notes="Prebuilt provider-daemon with embedded llama.cpp. Used by the Share your computer installer."
           publish() {
             local tag="$1" extra="$2"
-            gh release delete "$tag" --yes $extra --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
-            gh release create "$tag" dist/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "provider-daemon ($tag)" \
-              --notes "$notes" \
-              --latest=false
+            # Upload in place so the installer never sees a window without assets
+            # (delete+create used to 404 anyone installing during the publish).
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "$tag" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+              gh release edit "$tag" --notes "$notes ($(date -u +%Y-%m-%dT%H:%MZ), $GITHUB_SHA)" --repo "$GITHUB_REPOSITORY"
+            else
+              gh release create "$tag" dist/* \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "provider-daemon ($tag)" \
+                --notes "$notes" \
+                --latest=false
+            fi
           }
           # The installer always pulls from the rolling `provider-latest` release,
           # so every run refreshes it (git tag recreated to match). A version tag
