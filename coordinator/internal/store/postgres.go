@@ -53,8 +53,30 @@ func sha(b string) []byte {
 	return s[:]
 }
 
+// migrationLockKey is an arbitrary fixed key for a Postgres advisory lock that
+// serializes Migrate() across concurrent callers (multiple coordinator
+// instances starting up together, or multiple test binaries sharing one CI
+// database). Without it, two callers can both see a migration as "not yet
+// applied" (the check-then-create below isn't atomic on its own) and race to
+// CREATE the same table/type, which Postgres reports as a duplicate-key error
+// on its own catalog rather than anything migration-specific.
+const migrationLockKey = 84719205
+
 func (p *PG) Migrate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx,
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, int64(migrationLockKey)); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(migrationLockKey))
+	}()
+
+	if _, err := conn.Exec(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
 	); err != nil {
 		return fmt.Errorf("ensure schema_migrations: %w", err)
@@ -75,7 +97,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 	for _, name := range names {
 		version := strings.TrimSuffix(name, ".sql")
 		var exists bool
-		if err := p.pool.QueryRow(ctx,
+		if err := conn.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)`, version,
 		).Scan(&exists); err != nil {
 			return err
@@ -87,7 +109,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		tx, err := p.pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return err
 		}
