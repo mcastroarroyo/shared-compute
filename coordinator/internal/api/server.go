@@ -219,7 +219,7 @@ func withCORS(appURL string, next http.Handler) http.Handler {
 		w.Header().Set("Vary", "Origin")
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Admin-Token, Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Admin-Token, Content-Type, X-Provider-Trust-Level")
 			w.Header().Set("Access-Control-Max-Age", "600")
 			w.WriteHeader(http.StatusNoContent)
 			return
