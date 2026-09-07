@@ -122,7 +122,7 @@ export default function FeedbackPage() {
         ))}
       </div>
       <p className="muted" style={{ marginTop: 12, fontSize: ".85rem" }}>
-        Reply to testers from your own mail; this page only collects. Each entry is also an INFO event in Events.
+        Replies go straight to the tester's "Your messages" on app.ayni-ai.com/testers (and the phone app's feedback link). Each entry is also an INFO event in Events; each reply is an AUDIT event.
       </p>
     </main>
   );
