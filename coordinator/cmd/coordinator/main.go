@@ -15,6 +15,7 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/api"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/catalog"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/config"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/events"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/jobs"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/store"
@@ -25,7 +26,10 @@ func main() {
 	if os.Getenv("SC_DEBUG") != "" {
 		level = slog.LevelDebug
 	}
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	// Every Info+ record is also kept in an in-memory ring for the admin
+	// console's Events page (internal/events); stdout stays the system of record.
+	base := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	log := slog.New(events.NewHandler(base, events.Default, slog.LevelInfo))
 	slog.SetDefault(log)
 
 	cfg, err := config.Load()

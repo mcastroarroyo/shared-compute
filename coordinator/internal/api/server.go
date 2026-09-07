@@ -50,6 +50,7 @@ type Server struct {
 	auth      *auth.Auth      // nil unless Postgres + an OAuth client are configured
 	council   []council.Reviewer
 	councilDB *councilStore // nil unless SC_DATABASE_URL is set; persists the Council ledger
+	intake    intakeState   // operator maintenance switch (admin_console.go)
 }
 
 func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st store.Store, cat *catalog.Catalog, log *slog.Logger) *Server {
@@ -145,14 +146,16 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("GET /v1/manifest-key", instrument("v1_manifest_key", http.HandlerFunc(s.handleManifestKey)))
 	mux.Handle("GET /install/provider.sh", instrument("install_provider", http.HandlerFunc(s.handleInstallScript)))
-	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.withAuth(s.handleChatCompletions)))
-	mux.Handle("POST /v1/batch", instrument("v1_batch", s.withAuth(s.handleBatch)))
+	// Inference intake goes through s.gate so an operator can pause new work
+	// (503 + Retry-After) without disconnecting providers.
+	mux.Handle("POST /v1/chat/completions", instrument("v1_chat_completions", s.gate(s.withAuth(s.handleChatCompletions))))
+	mux.Handle("POST /v1/batch", instrument("v1_batch", s.gate(s.withAuth(s.handleBatch))))
 	mux.Handle("POST /v1/quote", instrument("v1_quote", http.HandlerFunc(s.handleQuotePreview)))
-	mux.Handle("POST /v1/demo/summarize", instrument("v1_demo_summarize", http.HandlerFunc(s.handleDemoSummarize)))
+	mux.Handle("POST /v1/demo/summarize", instrument("v1_demo_summarize", s.gate(http.HandlerFunc(s.handleDemoSummarize))))
 	mux.Handle("GET /v1/demo/last-job", instrument("v1_demo_last_job", http.HandlerFunc(s.handleDemoLastJob)))
-	mux.Handle("POST /v1/workloads", instrument("v1_workloads_create", s.withAuth(s.handleCreateWorkload)))
+	mux.Handle("POST /v1/workloads", instrument("v1_workloads_create", s.gate(s.withAuth(s.handleCreateWorkload))))
 	mux.Handle("GET /v1/workloads/{id}", instrument("v1_workloads_get", s.withAuth(s.handleGetWorkload)))
-	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.withAuth(s.handleAcceptWorkload)))
+	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.gate(s.withAuth(s.handleAcceptWorkload))))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	mux.Handle("POST /waitlist", instrument("waitlist", http.HandlerFunc(s.handleWaitlist)))
 	mux.Handle("POST /initiatives", instrument("initiatives", http.HandlerFunc(s.handleInitiative)))

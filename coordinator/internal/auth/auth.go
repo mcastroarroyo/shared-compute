@@ -325,6 +325,60 @@ func (a *Auth) EarningsForUser(ctx context.Context, userID string) (owedMicros i
 	return
 }
 
+// AdminUser is an account as the operator console sees it: the public profile
+// plus join facts. No credentials are included.
+type AdminUser struct {
+	User
+	CreatedAt time.Time `json:"created_at"`
+	APIKeyID  string    `json:"api_key_id"`
+	Devices   int       `json:"devices"` // provider identities ever linked to the account
+}
+
+// ListUsers returns every account, newest first.
+func (a *Auth) ListUsers(ctx context.Context) ([]AdminUser, error) {
+	rows, err := a.pool.Query(ctx, `
+		SELECT u.id, u.email, u.name, u.avatar_url, u.created_at, COALESCE(k.key_id,''),
+		       (SELECT count(*) FROM provider_owners o WHERE o.user_id = u.id)
+		FROM users u
+		LEFT JOIN user_api_keys k ON k.user_id = u.id
+		ORDER BY u.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AdminUser
+	for rows.Next() {
+		var u AdminUser
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.CreatedAt, &u.APIKeyID, &u.Devices); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// OwnersByStaticPK maps every linked provider identity to the account that
+// registered it, so the console can show who a device belongs to.
+func (a *Auth) OwnersByStaticPK(ctx context.Context) (map[string]User, error) {
+	rows, err := a.pool.Query(ctx, `
+		SELECT o.static_pk, u.id, u.email, u.name
+		FROM provider_owners o JOIN users u ON u.id = o.user_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]User{}
+	for rows.Next() {
+		var pk string
+		var u User
+		if err := rows.Scan(&pk, &u.ID, &u.Email, &u.Name); err != nil {
+			return nil, err
+		}
+		out[pk] = u
+	}
+	return out, rows.Err()
+}
+
 // --- internals ---
 
 func (a *Auth) upsertUser(ctx context.Context, provider, puid, email, name, avatar string) (User, error) {

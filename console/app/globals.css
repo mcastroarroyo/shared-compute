@@ -42,3 +42,53 @@ button:disabled { opacity: .5; cursor: default; }
 .bubble.user { background: #1b2330; }
 .bubble.assistant { background: #16211a; }
 code { background: #0e1116; padding: 1px 5px; border-radius: 4px; }
+
+/* --- Ayni Admin additions --- */
+:root { --warn: #d29922; --audit: #a371f7; --phone: #3fb950; --pc: #5b8def; --other: #8b929e; }
+nav { flex-wrap: wrap; }
+nav .brand { display: inline-flex; align-items: center; gap: 8px; }
+nav .brand-mark { width: 10px; height: 10px; border-radius: 3px; background: linear-gradient(135deg, var(--accent), var(--good)); }
+nav .nav-right { margin-left: auto; }
+.wrap { max-width: 1180px; }
+.row.between { justify-content: space-between; }
+.small { font-size: 12px; }
+.banner { background: #101a2b; border: 1px solid #1f3352; border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
+.banner.warn { background: #2a2210; border-color: #5a4614; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-top: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.kpi-value { font-size: 24px; font-weight: 600; margin: 2px 0; }
+.kpi.phone .kpi-value { color: var(--phone); }
+.kpi.pc .kpi-value { color: var(--pc); }
+.kpi.other .kpi-value { color: var(--other); }
+.kpi.bad .kpi-value { color: var(--bad); }
+.kpi.good .kpi-value { color: var(--good); }
+.tag { padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); }
+.tag.phone { color: var(--phone); border-color: #1c3a24; }
+.tag.pc { color: var(--pc); border-color: #1f3352; }
+.tag.other { color: var(--other); }
+.bars { display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 110px 1fr 40px; align-items: center; gap: 10px; }
+.bar { height: 10px; background: #0e1116; border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+.fill { height: 100%; border-radius: 999px; transition: width .4s; }
+.fill.phone { background: var(--phone); }
+.fill.pc { background: var(--pc); }
+.fill.other { background: var(--other); }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+.kv .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.kv .kv-row:last-child { border-bottom: 0; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: #171b21; }
+tr.detail td { background: #0e1116; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 18px; padding: 6px 2px; word-break: break-all; }
+button.small { padding: 4px 10px; font-size: 12px; }
+button.danger { background: #7a2626; }
+.pill.warn { color: var(--warn); border-color: #4a3a12; }
+.pill.audit { color: var(--audit); border-color: #3a2a55; }
+.log { display: grid; }
+.log-row { display: grid; grid-template-columns: 78px 64px minmax(180px, 1fr) 2fr; gap: 10px; align-items: baseline; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.log-row.error { background: #1f1214; }
+.log-row.warn { background: #1d1910; }
+.log-row.audit { background: #171325; }
+.log-attrs { color: var(--text); opacity: .85; word-break: break-all; }
+img { max-width: 100%; }

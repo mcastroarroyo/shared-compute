@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { Nav } from "./nav";
 
 export const metadata: Metadata = {
-  title: "shared-compute console",
-  description: "Operator console for the shared-compute inference network",
+  title: "Ayni Admin",
+  description: "IT-admin console for the Ayni compute network: fleet, users, events and controls",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

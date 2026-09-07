@@ -28,6 +28,10 @@ export function setCfg(p: { base?: string; admin?: string; consumer?: string }) 
   if (p.consumer !== undefined) localStorage.setItem(LS.consumer, p.consumer);
 }
 
+export function hasAdmin() {
+  return !!getCfg().admin;
+}
+
 async function adminFetch(path: string, init?: RequestInit) {
   const { base, admin } = getCfg();
   if (!admin) throw new Error("set an admin token in Settings");
@@ -54,6 +58,55 @@ async function consumerFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
+export type Device = {
+  id: string;
+  static_pk: string;
+  kind: "phone" | "pc" | "other";
+  platform: string;
+  arch: string;
+  cpu?: string;
+  backend: string;
+  hardware_class: string;
+  trust_tier: string;
+  models: string[];
+  max_context: number;
+  active_jobs: number;
+  draining: boolean;
+  ram_mb: number;
+  thermal_state: string;
+  security: Record<string, boolean>;
+  telemetry: {
+    active_jobs: number;
+    queue_depth: number;
+    cpu_load: number;
+    mem_available_mb: number;
+    thermal_state: string;
+    battery_pct?: number | null;
+    charging?: boolean | null;
+    network?: string;
+  };
+  connected_at: string;
+  last_seen: string;
+  connected_for: string;
+  owner?: { user_id: string; email: string; name: string };
+  acu: number;
+  class: string;
+  decode_tps: number;
+  sustained_end_tps: number;
+  cpu_cores: number;
+  benchmark_at?: string;
+  jobs_unpaid: number;
+  owed_usd: number;
+};
+
+export type Event = {
+  seq: number;
+  ts: string;
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR" | "AUDIT";
+  msg: string;
+  attrs?: Record<string, string>;
+};
+
 export const api = {
   models: async () => {
     const { base, consumer } = getCfg();
@@ -67,10 +120,38 @@ export const api = {
     const { base } = getCfg();
     return (await fetch(base + "/healthz")).json();
   },
-  providers: () => adminFetch("/admin/providers"),
+
+  // IT-admin console
+  overview: () => adminFetch("/admin/overview"),
+  providers: (): Promise<{ providers: Device[]; count: number }> => adminFetch("/admin/providers"),
+  disconnectProvider: (id: string, reason: string) =>
+    adminFetch(`/admin/providers/${encodeURIComponent(id)}/disconnect`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  drain: () => adminFetch("/admin/drain", { method: "POST" }),
+  users: () => adminFetch("/admin/users"),
+  events: (limit = 200, level = "", q = "", sinceSeq = 0): Promise<{ events: Event[]; stored: number; warnings_1h: number; errors_1h: number }> =>
+    adminFetch(
+      `/admin/events?limit=${limit}&level=${encodeURIComponent(level)}&q=${encodeURIComponent(q)}&since_seq=${sinceSeq}`,
+    ),
+  intake: () => adminFetch("/admin/intake"),
+  setIntake: (paused: boolean, message: string) =>
+    adminFetch("/admin/intake", { method: "POST", body: JSON.stringify({ paused, message }) }),
+  grantCredit: (key_id: string, amount_usd: number, note: string) =>
+    adminFetch("/admin/credit", { method: "POST", body: JSON.stringify({ key_id, amount_usd, note }) }),
+  config: () => adminFetch("/admin/config"),
+  metricsText: async () => {
+    const { base, admin } = getCfg();
+    const res = await fetch(base + "/metrics", { headers: admin ? { "X-Admin-Token": admin } : {} });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.text();
+  },
+
   nodes: () => adminFetch("/admin/nodes"),
   usage: (hours = 24) => adminFetch(`/admin/usage?since_hours=${hours}`),
   earnings: (hours = 168) => adminFetch(`/admin/earnings?since_hours=${hours}`),
+  waitlist: () => adminFetch("/admin/waitlist"),
 
   // billing (consumer key)
   balance: () => consumerFetch("/billing/balance"),
@@ -101,6 +182,29 @@ export const api = {
     adminFetch("/admin/keys", { method: "POST", body: JSON.stringify({ label }) }),
   setKey: (id: string, disabled: boolean) =>
     adminFetch(`/admin/keys/${id}/${disabled ? "disable" : "enable"}`, { method: "POST" }),
+};
+
+// Small formatting helpers shared by the pages.
+export const fmt = {
+  gb: (mb: number) => (mb >= 1024 ? (mb / 1024).toFixed(mb >= 10240 ? 0 : 1) + " GB" : mb + " MB"),
+  n: (v: number | undefined | null) => (v ?? 0).toLocaleString(),
+  usd: (v: number | undefined | null, d = 2) => "$" + (v ?? 0).toFixed(d),
+  ago: (iso?: string) => {
+    if (!iso) return "—";
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return `${Math.round(s)}s ago`;
+    if (s < 3600) return `${Math.round(s / 60)}m ago`;
+    if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+    return `${Math.round(s / 86400)}d ago`;
+  },
+  time: (iso?: string) => (iso ? new Date(iso).toLocaleTimeString() : "—"),
+  dur: (s: number) => {
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+    return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
+  },
+  kind: (k: string) => (k === "phone" ? "Phone" : k === "pc" ? "PC / laptop" : "Other"),
 };
 
 // Streaming chat for the playground. Calls onDelta with each token.

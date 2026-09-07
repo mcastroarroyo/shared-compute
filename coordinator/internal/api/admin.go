@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/capability"
+	"github.com/mcastroarroyo/shared-compute/coordinator/internal/events"
 )
 
 // admin routes are mounted only when SC_ADMIN_TOKEN is set. They back the web console:
@@ -23,7 +24,16 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.Handle("POST /admin/keys/{id}/disable", s.withAdmin(s.adminSetKey(true)))
 	mux.Handle("POST /admin/keys/{id}/enable", s.withAdmin(s.adminSetKey(false)))
 	mux.Handle("GET /admin/providers", s.withAdmin(s.adminProviders))
+	mux.Handle("POST /admin/providers/{id}/disconnect", s.withAdmin(s.adminDisconnectProvider))
 	mux.Handle("POST /admin/drain", s.withAdmin(s.adminDrain))
+	// IT-admin console (admin_console.go).
+	mux.Handle("GET /admin/overview", s.withAdmin(s.adminOverview))
+	mux.Handle("GET /admin/users", s.withAdmin(s.adminUsers))
+	mux.Handle("GET /admin/events", s.withAdmin(s.adminEvents))
+	mux.Handle("GET /admin/intake", s.withAdmin(s.adminGetIntake))
+	mux.Handle("POST /admin/intake", s.withAdmin(s.adminSetIntake))
+	mux.Handle("POST /admin/credit", s.withAdmin(s.adminCredit))
+	mux.Handle("GET /admin/config", s.withAdmin(s.adminConfig))
 	mux.Handle("GET /admin/nodes", s.withAdmin(s.adminNodes))
 	mux.Handle("GET /admin/usage", s.withAdmin(s.adminUsage))
 	mux.Handle("GET /admin/earnings", s.withAdmin(s.adminEarnings))
@@ -82,37 +92,7 @@ func (s *Server) adminSetKey(disabled bool) http.HandlerFunc {
 	}
 }
 
-type providerView struct {
-	ID            string   `json:"id"`
-	StaticPK      string   `json:"static_pk"` // base64 X25519 — the payout identity
-	Platform      string   `json:"platform"`
-	Arch          string   `json:"arch"`
-	Backend       string   `json:"backend"`
-	HardwareClass string   `json:"hardware_class"`
-	TrustTier     string   `json:"trust_tier"`
-	Models        []string `json:"models"`
-	ActiveJobs    int      `json:"active_jobs"`
-	RAMMB         int      `json:"ram_mb"`
-	ThermalState  string   `json:"thermal_state"`
-	ConnectedFor  string   `json:"connected_for"`
-}
-
-func (s *Server) adminProviders(w http.ResponseWriter, _ *http.Request) {
-	var out []providerView
-	for _, p := range s.reg.Snapshot() {
-		active, _ := p.Load()
-		out = append(out, providerView{
-			ID:       p.ID,
-			StaticPK: base64.StdEncoding.EncodeToString(p.StaticPK[:]),
-			Platform: p.Capabilities.Platform, Arch: p.Capabilities.Arch,
-			Backend: p.Capabilities.Backend, HardwareClass: p.Capabilities.HardwareClass,
-			TrustTier: p.TrustTier, Models: p.Capabilities.Models, ActiveJobs: active,
-			RAMMB: p.Capabilities.RAMMB, ThermalState: p.Telemetry.ThermalState,
-			ConnectedFor: time.Since(p.ConnectedAt).Round(time.Second).String(),
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"providers": out, "count": len(out)})
-}
+// adminProviders (the connected-device list) lives in admin_console.go.
 
 // adminNodes lists provider capability fingerprints with the derived ACU / class
 // and whether the node is connected right now — the marketplace's view of supply.
@@ -219,7 +199,7 @@ func (s *Server) adminEarnings(w http.ResponseWriter, r *http.Request) {
 // Run keeps a superseded instance alive while its WebSockets are open, which
 // would otherwise strand every provider on an instance the scheduler no longer
 // sees for up to the request timeout.
-func (s *Server) adminDrain(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) adminDrain(w http.ResponseWriter, r *http.Request) {
 	n := 0
 	for _, p := range s.reg.Snapshot() {
 		if p.Close != nil {
@@ -227,6 +207,9 @@ func (s *Server) adminDrain(w http.ResponseWriter, _ *http.Request) {
 			n++
 		}
 	}
+	events.Audit("drain: all providers disconnected", map[string]string{
+		"providers": strconv.Itoa(n), "actor": adminActor(r),
+	})
 	s.log.Info("admin drain", "providers", n)
 	writeJSON(w, http.StatusOK, map[string]any{"drained": n})
 }

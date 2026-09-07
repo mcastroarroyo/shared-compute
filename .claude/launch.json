@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "coordinator-local",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "cd coordinator && SC_HTTP_ADDR=127.0.0.1:8080 SC_ADMIN_TOKEN=local-admin-token SC_PROVIDER_TOKENS=dev-provider-token SC_CONSUMER_API_KEYS=dev-consumer-key SC_RATE_PER_MIN=600 go run ./cmd/coordinator"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "console-dev",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "cd console && NEXT_PUBLIC_COORDINATOR_URL=http://127.0.0.1:8080 npx next dev -p 3100"
+      ],
+      "port": 3100
+    }
+  ]
+}

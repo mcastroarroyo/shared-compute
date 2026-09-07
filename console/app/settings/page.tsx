@@ -35,7 +35,9 @@ export default function Settings() {
     <>
       <h1>Settings</h1>
       <p className="muted">
-        Stored in this browser only. Single-operator setup — real multi-user auth arrives in M9.
+        Stored in this browser only (localStorage). The admin token is the coordinator&apos;s
+        SC_ADMIN_TOKEN; anyone with it has every control on this console, so treat it like a root
+        password. Per-admin accounts and roles are on the roadmap.
       </p>
       <div className="panel" style={{ display: "grid", gap: 14, maxWidth: 620 }}>
         <label>
