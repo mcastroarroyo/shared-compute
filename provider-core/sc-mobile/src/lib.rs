@@ -255,7 +255,9 @@ impl Provider {
             let cap = std::time::Duration::from_secs(60);
             loop {
                 let started = std::time::Instant::now();
-                let res = provider_lib::run(cfg.clone(), sink.clone(), attest_hook.clone(), c2.clone()).await;
+                let res =
+                    provider_lib::run(cfg.clone(), sink.clone(), attest_hook.clone(), c2.clone())
+                        .await;
                 if c2.is_cancelled() {
                     return;
                 }
