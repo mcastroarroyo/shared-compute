@@ -57,6 +57,9 @@ type Config struct {
 	RunResultsTTLSeconds int
 	// MaxAsyncRunsPerKey bounds concurrent queued/running async workloads per API key. Default 4.
 	MaxAsyncRunsPerKey int
+	// AllowInsecureWebhooks permits http:// and private/loopback webhook targets.
+	// Local development only: in production this is an SSRF hole. Default false.
+	AllowInsecureWebhooks bool
 
 	// --- accounts / OAuth sign-in (app.ayni-ai.com). Postgres-only. ---
 	GitHubClientID, GitHubClientSecret string
@@ -123,6 +126,7 @@ func Load() (Config, error) {
 		QuoteTTLSeconds:            getenvInt("SC_QUOTE_TTL_SECONDS", 600),
 		RunResultsTTLSeconds:       getenvInt("SC_RUN_RESULTS_TTL_SECONDS", 3600),
 		MaxAsyncRunsPerKey:         getenvInt("SC_MAX_ASYNC_RUNS_PER_KEY", 4),
+		AllowInsecureWebhooks:      getenv("SC_ALLOW_INSECURE_WEBHOOKS", "") == "1",
 		SpotPriceFactor:            getenvFloat("SC_SPOT_PRICE_FACTOR", 0.6),
 		SpotEtaSlack:               getenvFloat("SC_SPOT_ETA_SLACK", 3),
 		ManifestSigningKey:         getenv("SC_MANIFEST_SIGNING_KEY", ""),

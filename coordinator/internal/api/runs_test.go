@@ -154,6 +154,7 @@ func TestInflightCapPerKey(t *testing.T) {
 func TestWebhookIsSignedAndCarriesNoContent(t *testing.T) {
 	s := runTestServer(t)
 	s.cfg.AuthCallbackBase = "https://api.example.com"
+	s.cfg.AllowInsecureWebhooks = true // this test needs a loopback listener
 
 	var gotBody []byte
 	var gotSig string
@@ -196,5 +197,42 @@ func TestWebhookIsSignedAndCarriesNoContent(t *testing.T) {
 		if strings.Contains(string(gotBody), banned) {
 			t.Errorf("webhook payload must not carry job content; found %q in %s", banned, gotBody)
 		}
+	}
+}
+
+// A webhook URL is an outbound request the coordinator makes on a customer's say-so.
+// The coordinator sits in a VPC with database access, so internal targets must be
+// refused: otherwise the feature is an SSRF probe into the operator's network.
+func TestWebhookURLRejectsInternalTargets(t *testing.T) {
+	blocked := []string{
+		"http://example.com/hook",                     // plaintext
+		"https://127.0.0.1/hook",                      // loopback
+		"https://10.0.0.5/hook",                       // private
+		"https://192.168.1.10/hook",                   // private
+		"https://169.254.169.254/computeMetadata/v1/", // cloud metadata service
+		"https://[::1]/hook",                          // loopback v6
+		"ftp://example.com/hook",                      // wrong scheme
+		"https:///nohost",                             // no host
+	}
+	for _, raw := range blocked {
+		if err := validateWebhookURL(raw, false); err == nil {
+			t.Errorf("expected %q to be refused in production mode", raw)
+		}
+	}
+	if err := validateWebhookURL("https://ops.example.com/hooks/ayni", false); err != nil {
+		t.Errorf("a public https endpoint must be allowed, got %v", err)
+	}
+	// Names are not resolved at submit time (that would be flaky and rebinding-prone);
+	// they are enforced when the socket opens, which safeWebhookClient covers.
+	if err := validateWebhookURL("https://localhost/hook", false); err != nil {
+		t.Errorf("names pass the cheap pre-check; connect-time guard catches them: %v", err)
+	}
+	if _, err := safeWebhookClient(false).Get("http://127.0.0.1:9/hook"); err == nil {
+		t.Error("the guarded client must refuse to connect to loopback")
+	}
+
+	// The dev escape hatch is explicit and off by default.
+	if err := validateWebhookURL("http://127.0.0.1:8099/hook", true); err != nil {
+		t.Errorf("loopback must be allowed when insecure webhooks are enabled, got %v", err)
 	}
 }

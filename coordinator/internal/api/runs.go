@@ -9,7 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -370,7 +372,7 @@ func (s *Server) deliverRunWebhook(ctx context.Context, run store.WorkloadRun) e
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "ayni-coordinator/1")
 	req.Header.Set("X-Ayni-Signature", "t="+ts+",v1="+sig)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := safeWebhookClient(s.cfg.AllowInsecureWebhooks).Do(req)
 	if err != nil {
 		return err
 	}
@@ -510,4 +512,68 @@ func (s *Server) lookupRun(w http.ResponseWriter, r *http.Request) (store.Worklo
 		return store.WorkloadRun{}, false
 	}
 	return run, true
+}
+
+// --- webhook SSRF guard ---
+
+// validateWebhookURL is the cheap, synchronous check at submission time: scheme, host
+// present, and no literal internal IP. It deliberately does NOT resolve DNS — that would
+// make submission depend on name resolution and still lose to DNS rebinding. The binding
+// guarantee is enforced at connect time by safeWebhookClient below.
+func validateWebhookURL(raw string, allowInsecure bool) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("webhook_url is not a valid URL")
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !allowInsecure {
+			return fmt.Errorf("webhook_url must be an https:// URL")
+		}
+	default:
+		return fmt.Errorf("webhook_url must be an https:// URL")
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("webhook_url must include a host")
+	}
+	if allowInsecure {
+		return nil
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil && !isPublicIP(ip) {
+		return fmt.Errorf("webhook_url must be a public address")
+	}
+	return nil
+}
+
+// isPublicIP reports whether an address is routable on the public internet. Loopback,
+// private, link-local (which covers the 169.254.169.254 cloud metadata service),
+// multicast and unspecified addresses are not.
+func isPublicIP(ip net.IP) bool {
+	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified())
+}
+
+// safeWebhookClient refuses, at the moment the socket is opened, to connect to any
+// non-public address. Checking here rather than before the request closes DNS rebinding:
+// whatever the name resolved to, the actual destination address is what gets tested.
+func safeWebhookClient(allowInsecure bool) *http.Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	if allowInsecure {
+		return &http.Client{Transport: &http.Transport{DialContext: dialer.DialContext}}
+	}
+	return &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ip := net.ParseIP(host)
+			if ip == nil || !isPublicIP(ip) {
+				return nil, fmt.Errorf("refusing to connect to non-public address %s", host)
+			}
+			return dialer.DialContext(ctx, network, addr)
+		},
+	}}
 }

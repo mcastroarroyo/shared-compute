@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/batch"
@@ -315,9 +314,11 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&opts) // empty body = sync
 	}
-	if opts.WebhookURL != "" && !strings.HasPrefix(opts.WebhookURL, "https://") {
-		writeError(w, http.StatusBadRequest, "bad_webhook", "webhook_url must be an https:// URL")
-		return
+	if opts.WebhookURL != "" {
+		if err := validateWebhookURL(opts.WebhookURL, s.cfg.AllowInsecureWebhooks); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_webhook", err.Error())
+			return
+		}
 	}
 	keyID := keyIDFrom(r.Context())
 	if opts.Async && s.runs.inflightFor(keyID) >= s.maxAsyncRunsPerKey() {

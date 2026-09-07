@@ -37,17 +37,53 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "clients"
 
 from ayni import Ayni, AyniError, CouncilBlocked, InsufficientCredit, Quote  # noqa: E402
 
-# A small model needs a tight, closed-form instruction. One line in, one line out.
-TRIAGE_TEMPLATE = """You are a security log triage assistant. Classify the log line.
-Reply with exactly one line in this form, nothing else:
-SEVERITY|CATEGORY|short reason
+# A 0.5B model pattern-matches; it does not reason its way to a verdict. Two rules earn
+# most of the accuracy here: ask for exactly one token from a closed set, and give worked
+# examples. The category is NOT asked of the model — small models copy stray context words
+# into free-form fields — it is derived deterministically below, which is free and exact.
+TRIAGE_TEMPLATE = """Answer with ONE word: CRITICAL, HIGH, MEDIUM, LOW, or NONE.
+How much of a security concern is this log line?
 
-SEVERITY is one of CRITICAL, HIGH, MEDIUM, LOW, NONE.
-CATEGORY is one of auth, exfiltration, malware, misconfig, recon, availability, other.
-Use NONE for ordinary, healthy activity.
+LOG: sshd[11]: Failed password for invalid user admin from 45.9.1.2 port 22 ssh2
+ANSWER: HIGH
+LOG: GET /healthz 200 1.2ms
+ANSWER: NONE
+LOG: GET /admin/../../etc/passwd 404 from 8.8.8.8
+ANSWER: HIGH
+LOG: storage.objects.get by contractor@outside.example on buckets/payroll/salaries.csv
+ANSWER: HIGH
+LOG: systemd[1]: Started Daily apt download activities.
+ANSWER: NONE
+LOG: sshd[20]: Accepted publickey for deploy from 10.0.2.15 port 43122 ssh2
+ANSWER: NONE
+LOG: kernel: Out of memory: Killed process 8821 (node)
+ANSWER: MEDIUM
+LOG: {input}
+ANSWER:"""
 
-LOG LINE:
-{input}"""
+# Category is a lookup, not a judgement call: deterministic, free, and never wrong in the
+# way a small model is wrong.
+CATEGORY_RULES = [
+    ("auth", ("failed password", "authentication fail", "invalid user", "sudo:", "setiampolicy",
+              "accepted publickey", "login", "unauthorized", "permission denied")),
+    ("exfiltration", ("storage.objects.get", "download", "payroll", "export", "s3:getobject",
+                      "bigquery.jobs", "egress")),
+    ("recon", ("../", "etc/passwd", "nmap", "scan", "sqlmap", "union select", "404 from")),
+    ("malware", ("malware", "virus", "ransom", "cryptomine", "xmrig", "backdoor")),
+    ("availability", ("out of memory", "oom", "too many connections", "timeout", "crash",
+                      "refused", "unavailable", "throttl")),
+    ("misconfig", ("setiampolicy", "allusers", "public access", "0.0.0.0/0", "insecure")),
+]
+
+
+def categorize(line: str) -> str:
+    """Pick a category from the log text itself. First match wins; order is by severity of concern."""
+    low = line.lower()
+    for name, needles in CATEGORY_RULES:
+        if any(n in low for n in needles):
+            return name
+    return "other"
+
 
 SEVERITY_RANK = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
@@ -72,15 +108,9 @@ def extract_message(entry: Any) -> str:
     else:
         base = entry.get("message") or json.dumps(entry, separators=(",", ":"))
 
-    # Carry a little context the model can use, without ballooning the prompt.
-    bits = [str(base).strip()]
-    if sev := entry.get("severity"):
-        bits.append(f"[severity={sev}]")
-    res = entry.get("resource")
-    if isinstance(res, dict) and (rtype := res.get("type")):
-        bits.append(f"[resource={rtype}]")
-    line = " ".join(bits)
-    return line[:1200]  # keep prompts small: cost is per token
+    # Deliberately no [severity=]/[resource=] annotations: a small model copies those
+    # tokens straight into its answer. That context is kept on the finding instead.
+    return str(base).strip()[:1200]  # keep prompts small: cost is per token
 
 
 def read_entries(path: str) -> Iterator[tuple[str, Any]]:
@@ -115,20 +145,18 @@ def read_entries(path: str) -> Iterator[tuple[str, Any]]:
         yield extract_message(entry), entry
 
 
-def parse_verdict(text: str) -> tuple[str, str, str]:
-    """Parse 'SEVERITY|CATEGORY|reason' leniently — small models drift."""
-    line = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
-    parts = [p.strip() for p in line.split("|")]
-    sev = (parts[0] if parts else "").upper()
-    for token in SEVERITY_RANK:
-        if token in sev:
+def parse_verdict(text: str, log_line: str) -> tuple[str, str, str]:
+    """Read the one-word severity; derive the category from the log text."""
+    raw = (text or "").strip().upper()
+    sev = ""
+    for token in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"):
+        if token in raw:      # tolerate "ANSWER: HIGH" or trailing chatter
             sev = token
             break
-    else:
-        sev = "NONE" if not sev else "LOW"  # unparseable but non-empty: worth a human look
-    cat = parts[1].lower() if len(parts) > 1 else "other"
-    reason = parts[2] if len(parts) > 2 else line
-    return sev, cat, reason[:300]
+    if not sev:
+        # Unparseable is not the same as safe: surface it for a human rather than drop it.
+        sev = "LOW"
+    return sev, categorize(log_line), (text or "").strip()[:200]
 
 
 def show_quote(q: Quote) -> None:
@@ -152,7 +180,7 @@ def main() -> int:
                     help="60%% of on-demand price; slower, may requeue")
     ap.add_argument("--trust", choices=["community", "device_attested", "confidential"],
                     help="require this hardware trust tier")
-    ap.add_argument("--max-tokens", type=int, default=48)
+    ap.add_argument("--max-tokens", type=int, default=6)
     ap.add_argument("--chunk", type=int, default=500, help="lines per workload")
     ap.add_argument("--async", dest="is_async", action="store_true",
                     help="queue the work and poll instead of holding the connection")
@@ -160,8 +188,61 @@ def main() -> int:
     ap.add_argument("--estimate", action="store_true",
                     help="price the job and exit; sends no log content")
     ap.add_argument("--count", type=int, help="line count to price with --estimate")
-    ap.add_argument("--avg-input-tokens", type=int, default=180)
+    ap.add_argument("--avg-input-tokens", type=int, default=220)
+    ap.add_argument("--selftest", action="store_true",
+                    help="score the current model against labelled lines and exit")
+    ap.add_argument("--labels", default=os.path.join(os.path.dirname(__file__), "labelled-sample.jsonl"),
+                    help="JSONL of {log, review} used by --selftest")
     args = ap.parse_args()
+
+    # --- selftest: does this model actually triage YOUR logs? measure, do not assume ---
+    if args.selftest:
+        rows = [json.loads(l) for l in open(args.labels, encoding="utf-8") if l.strip()]
+        client = Ayni(api_key=os.environ.get("AYNI_API_KEY"), trust=args.trust)
+        res = client.run(
+            prompts=[TRIAGE_TEMPLATE.format(input=r["log"]) for r in rows],
+            max_tokens=args.max_tokens, max_price_usd=args.max_price, on_quote=show_quote,
+        )
+        tp = fp = tn = fn = 0
+        verdicts: list[str] = []
+        for out, row in zip(res.contents(), rows):
+            sev, _, _ = parse_verdict(out, row["log"])
+            verdicts.append(sev)
+            flagged = SEVERITY_RANK[sev] >= SEVERITY_RANK[args.min_severity]
+            want = bool(row["review"])
+            tp += flagged and want
+            fp += flagged and not want
+            tn += (not flagged) and (not want)
+            fn += (not flagged) and want
+            if flagged != want:
+                print(f"  MISS want={'review' if want else 'ignore':<6} got={sev:<8} {row['log'][:58]}")
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        print(f"\n{len(rows)} labelled lines at --min-severity {args.min_severity}")
+        print(f"  recall     {recall:.0%}  ({tp}/{tp + fn} of the lines that needed review were caught)")
+        print(f"  precision  {precision:.0%}  ({fp} false alarm(s))")
+        print(f"  cost       ${res.charged_usd:.4f}")
+        # A model that answers the same thing every time scores high recall for free.
+        # Catch that before it reads as competence.
+        spread = len(set(verdicts))
+        degenerate = spread == 1 or precision < 0.5
+        if degenerate:
+            print(f"\n  distinct answers: {spread} of 5 possible ({', '.join(sorted(set(verdicts)))})")
+            print("\n  VERDICT: not fit for triage.")
+            if spread == 1:
+                print("  The model returned one answer for every line — that is not classification,")
+                print("  and any recall it scores is an artifact of the threshold, not skill.")
+            else:
+                print("  Precision this low means most alerts are noise; an on-call rota will stop")
+                print("  reading them, which is worse than no triage at all.")
+            print("  Measured on the 0.5B model in production today. This pipeline is ready for a")
+            print("  larger model class; do not put it in front of a SIEM until both numbers hold up.")
+            return 1
+        if recall < 0.8:
+            print("\n  VERDICT: not fit for triage. Real incidents are passing through.")
+            return 1
+        print("\n  VERDICT: usable as a first-pass filter. Keep measuring on your own labelled data.")
+        return 0
 
     # --- estimate mode: compare against your current bill before moving anything ---
     if args.estimate:
@@ -245,7 +326,7 @@ def main() -> int:
             for item, (msg, entry) in zip(result.items, chunk):
                 if not item.ok:
                     continue
-                sev, cat, reason = parse_verdict(item.content)
+                sev, cat, reason = parse_verdict(item.content, msg)
                 if SEVERITY_RANK[sev] < floor:
                     continue
                 flagged += 1
