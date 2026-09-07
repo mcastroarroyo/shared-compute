@@ -210,6 +210,8 @@ func ExecuteOn(ctx context.Context, d Deps, prov *registry.Provider, req Request
 			case jobs.KindError:
 				var je protocol.JobError
 				_ = json.Unmarshal(ev.Raw, &je)
+				d.Log.Warn("job failed on provider", "job_id", jobID, "provider_id", prov.ID,
+					"platform", prov.Capabilities.Platform, "code", je.Code)
 				return nil, fmt.Errorf("provider job error: %s", je.Code)
 			}
 		}

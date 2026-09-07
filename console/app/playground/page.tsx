@@ -53,7 +53,17 @@ export default function Playground() {
         abort.current.signal,
       );
     } catch (e: any) {
-      if (e.name !== "AbortError") setErr(e.message);
+      if (e.name !== "AbortError") {
+        setErr(e.message);
+        setMsgs((m) => {
+          const copy = m.slice();
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant" && !last.content) {
+            copy[copy.length - 1] = { role: "assistant", content: `⚠ ${e.message}` };
+          }
+          return copy;
+        });
+      }
     } finally {
       setBusy(false);
     }

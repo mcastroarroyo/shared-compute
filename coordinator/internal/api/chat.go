@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -152,6 +153,13 @@ func relayErrInfo(err error) (label string, status int, code, msg string) {
 func mapRelayErr(w http.ResponseWriter, err error) {
 	label, status, code, msg := relayErrInfo(err)
 	metrics.JobsTotal.WithLabelValues(label).Inc()
+	// Surface every failed job to operators (the events ring picks this up);
+	// a client hanging up is not a fault. Content-free: code and class only.
+	if status == 499 {
+		slog.Default().Info("job cancelled by client", "code", code)
+	} else {
+		slog.Default().Warn("job failed", "code", code, "class", label, "detail", msg)
+	}
 	if w != nil && status != 499 {
 		writeError(w, status, code, msg)
 	}
@@ -295,7 +303,8 @@ func (s *Server) streamChat(w http.ResponseWriter, r *http.Request, rr relay.Req
 	})
 	if err != nil {
 		mapRelayErr(nil, err) // count only; response already started
-		b, _ := json.Marshal(map[string]any{"error": map[string]string{"message": "upstream error", "type": "server_error"}})
+		_, _, code, msg := relayErrInfo(err)
+		b, _ := json.Marshal(map[string]any{"error": map[string]string{"message": msg, "type": "server_error", "code": code}})
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
 		flusher.Flush()
 		return

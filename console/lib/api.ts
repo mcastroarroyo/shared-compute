@@ -235,13 +235,19 @@ export async function chatStream(
     for (const p of parts) {
       const line = p.replace(/^data: /, "").trim();
       if (!line || line === "[DONE]") continue;
+      let j: any;
       try {
-        const j = JSON.parse(line);
-        const d = j.choices?.[0]?.delta?.content;
-        if (d) onDelta(d);
+        j = JSON.parse(line);
       } catch {
-        /* ignore keep-alives */
+        continue; // keep-alive / comment frame
       }
+      if (j.error) {
+        // The coordinator reports a failed job as an SSE error frame; surface it
+        // instead of leaving an empty bubble.
+        throw new Error(j.error.code ? `${j.error.code}: ${j.error.message}` : j.error.message || "upstream error");
+      }
+      const d = j.choices?.[0]?.delta?.content;
+      if (d) onDelta(d);
     }
   }
 }
