@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -337,6 +338,31 @@ func (m *Mem) FeedbackSince(_ context.Context, _ time.Time) ([]FeedbackEntry, er
 	out := make([]FeedbackEntry, len(m.feedback))
 	copy(out, m.feedback)
 	return out, nil
+}
+
+func (m *Mem) FeedbackForUser(_ context.Context, userID, email string) ([]FeedbackEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []FeedbackEntry
+	for _, e := range m.feedback {
+		if (userID != "" && e.UserID == userID) || (email != "" && strings.EqualFold(e.Email, email)) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (m *Mem) AddFeedbackReply(_ context.Context, feedbackID int64, author, body string) (FeedbackReply, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.feedback {
+		if m.feedback[i].ID == feedbackID {
+			r := FeedbackReply{ID: int64(len(m.feedback[i].Replies) + 1), FeedbackID: feedbackID, Author: author, Body: body, CreatedAt: time.Now()}
+			m.feedback[i].Replies = append(m.feedback[i].Replies, r)
+			return r, nil
+		}
+	}
+	return FeedbackReply{}, errors.New("feedback not found")
 }
 
 func (m *Mem) WaitlistSince(_ context.Context, _ time.Time) ([]WaitlistEntry, error) {

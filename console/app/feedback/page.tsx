@@ -12,6 +12,7 @@ type Feedback = {
   version: string;
   user_id?: string;
   created_at: string;
+  replies?: { id: number; author: string; body: string; created_at: string }[];
 };
 
 const KINDS = ["all", "bug", "feedback", "idea", "tester_request"];
@@ -21,6 +22,19 @@ export default function FeedbackPage() {
   const [err, setErr] = useState("");
   const [kind, setKind] = useState("all");
   const [q, setQ] = useState("");
+  const [draft, setDraft] = useState<Record<number, string>>({});
+
+  const reply = async (id: number) => {
+    const body = (draft[id] || "").trim();
+    if (!body) return;
+    try {
+      await api.replyFeedback(id, body);
+      setDraft({ ...draft, [id]: "" });
+      load();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!hasAdmin()) return;
@@ -93,6 +107,17 @@ export default function FeedbackPage() {
               <span className="muted">{fmt.ago(r.created_at)}</span>
             </div>
             <p style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>{r.message}</p>
+            {(r.replies || []).map((rep) => (
+              <div key={rep.id} style={{ margin: "8px 0 0 16px", padding: "8px 12px", borderRadius: 8, background: rep.author === "ayni" ? "rgba(91,141,239,.12)" : "rgba(255,255,255,.05)" }}>
+                <span className="muted" style={{ fontSize: ".8rem" }}><strong>{rep.author === "ayni" ? "Ayni" : "Tester"}</strong> · {fmt.ago(rep.created_at)}</span>
+                <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{rep.body}</p>
+              </div>
+            ))}
+            <div className="row" style={{ gap: 8, marginTop: 8, marginLeft: 16 }}>
+              <input className="input" style={{ flex: 1 }} placeholder="Reply to this tester…" value={draft[r.id] || ""} onChange={(e) => setDraft({ ...draft, [r.id]: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); reply(r.id); } }} />
+              <button className="btn" disabled={!(draft[r.id] || "").trim()} onClick={() => reply(r.id)}>Reply</button>
+            </div>
           </div>
         ))}
       </div>

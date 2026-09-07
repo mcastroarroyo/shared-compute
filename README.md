@@ -76,6 +76,15 @@ make e2e        # end-to-end encrypted round-trip test
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for toolchain setup.
 
+## Testers wanted
+
+Ayni is in early testing and needs people with an Android phone, a Mac or a Linux box.
+Ten minutes: sign in at [app.ayni-ai.com](https://app.ayni-ai.com), add a device (phone: a
+6-letter pairing code; Mac/Linux: one command), run one workload, and tell us what confused you.
+Every message gets a reply in the same place. Details and honest status:
+[ayni-ai.com/testers](https://ayni-ai.com/testers/) · community:
+[Discussions](https://github.com/mcastroarroyo/shared-compute/discussions).
+
 ## Legal
 
 Clean-room implementation. This project does **not** copy or adapt code from any

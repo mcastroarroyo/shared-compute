@@ -262,22 +262,70 @@ func (p *PG) AddFeedback(ctx context.Context, e FeedbackEntry) error {
 }
 
 func (p *PG) FeedbackSince(ctx context.Context, t time.Time) ([]FeedbackEntry, error) {
-	rows, err := p.pool.Query(ctx, `
+	return p.feedbackQuery(ctx, `
 		SELECT id, kind, email, device, message, app, version, user_id, created_at FROM feedback
 		WHERE created_at >= $1 ORDER BY created_at DESC LIMIT 500`, t)
+}
+
+func (p *PG) FeedbackForUser(ctx context.Context, userID, email string) ([]FeedbackEntry, error) {
+	return p.feedbackQuery(ctx, `
+		SELECT id, kind, email, device, message, app, version, user_id, created_at FROM feedback
+		WHERE (user_id = $1 AND $1 <> '') OR (lower(email) = lower($2) AND $2 <> '')
+		ORDER BY created_at DESC LIMIT 100`, userID, email)
+}
+
+func (p *PG) feedbackQuery(ctx context.Context, sql string, args ...any) ([]FeedbackEntry, error) {
+	rows, err := p.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []FeedbackEntry
+	var ids []int64
 	for rows.Next() {
 		var e FeedbackEntry
 		if err := rows.Scan(&e.ID, &e.Kind, &e.Email, &e.Device, &e.Message, &e.App, &e.Version, &e.UserID, &e.CreatedAt); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		e.Replies = []FeedbackReply{}
 		out = append(out, e)
+		ids = append(ids, e.ID)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil || len(ids) == 0 {
+		return out, err
+	}
+	rrows, err := p.pool.Query(ctx, `
+		SELECT id, feedback_id, author, body, created_at FROM feedback_replies
+		WHERE feedback_id = ANY($1) ORDER BY created_at ASC`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rrows.Close()
+	byID := map[int64]int{}
+	for i, e := range out {
+		byID[e.ID] = i
+	}
+	for rrows.Next() {
+		var r FeedbackReply
+		if err := rrows.Scan(&r.ID, &r.FeedbackID, &r.Author, &r.Body, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		if i, ok := byID[r.FeedbackID]; ok {
+			out[i].Replies = append(out[i].Replies, r)
+		}
+	}
+	return out, rrows.Err()
+}
+
+func (p *PG) AddFeedbackReply(ctx context.Context, feedbackID int64, author, body string) (FeedbackReply, error) {
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	r := FeedbackReply{FeedbackID: feedbackID, Author: author, Body: body}
+	err := p.pool.QueryRow(ct, `
+		INSERT INTO feedback_replies (feedback_id, author, body) VALUES ($1,$2,$3)
+		RETURNING id, created_at`, feedbackID, author, body).Scan(&r.ID, &r.CreatedAt)
+	return r, err
 }
 
 func (p *PG) WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error) {

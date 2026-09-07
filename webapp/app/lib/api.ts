@@ -60,6 +60,21 @@ export const api = {
 
   feedback: (input: { kind: string; message: string; email?: string; device?: string; app?: string; version?: string }) =>
     req("/v1/feedback", { method: "POST", body: JSON.stringify({ app: "webapp", ...input }) }),
+  myFeedback: (): Promise<{ feedback: FeedbackThread[] }> => req("/v1/me/feedback"),
+  replyFeedback: (id: number, body: string) =>
+    req(`/v1/me/feedback/${id}/reply`, { method: "POST", body: JSON.stringify({ body }) }),
+};
+
+export type FeedbackThread = {
+  id: number;
+  kind: string;
+  email: string;
+  device: string;
+  message: string;
+  app: string;
+  version: string;
+  created_at: string;
+  replies: { id: number; author: "ayni" | "tester"; body: string; created_at: string }[];
 };
 
 export type MyDevice = {

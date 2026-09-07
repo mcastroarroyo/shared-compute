@@ -153,6 +153,8 @@ export const api = {
   earnings: (hours = 168) => adminFetch(`/admin/earnings?since_hours=${hours}`),
   waitlist: () => adminFetch("/admin/waitlist"),
   feedback: () => adminFetch("/admin/feedback"),
+  replyFeedback: (id: number, body: string) =>
+    adminFetch(`/admin/feedback/${id}/reply`, { method: "POST", body: JSON.stringify({ body }) }),
 
   // billing (consumer key)
   balance: () => consumerFetch("/billing/balance"),

@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type Me } from "../lib/api";
+import { api, type Me, type FeedbackThread } from "../lib/api";
 
 const PLAY_TEST_URL = "https://play.google.com/apps/internaltest/4701333072640107331";
-// Set once the tester chat exists (Discord / Telegram invite). Empty hides the card.
-const CHAT_URL = process.env.NEXT_PUBLIC_TESTER_CHAT_URL || "";
+// Community channel: GitHub Discussions on the public repo (testers already sign in with GitHub).
+const CHAT_URL = process.env.NEXT_PUBLIC_TESTER_CHAT_URL || "https://github.com/mcastroarroyo/shared-compute/discussions";
 
 export default function Testers() {
   const [me, setMe] = useState<Me | null>(null);
@@ -16,6 +16,28 @@ export default function Testers() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState("");
   const [err, setErr] = useState("");
+  const [threads, setThreads] = useState<FeedbackThread[] | null>(null);
+  const [replyText, setReplyText] = useState<Record<number, string>>({});
+
+  const loadThreads = () => api.myFeedback().then((r) => setThreads(r.feedback)).catch(() => setThreads([]));
+  const sendReply = async (id: number) => {
+    const body = (replyText[id] || "").trim();
+    if (!body) return;
+    try {
+      await api.replyFeedback(id, body);
+      setReplyText({ ...replyText, [id]: "" });
+      loadThreads();
+    } catch (e: any) {
+      setErr(e.message || "could not send");
+    }
+  };
+
+  useEffect(() => {
+    if (!me) return;
+    loadThreads();
+    const t = setInterval(loadThreads, 15_000);
+    return () => clearInterval(t);
+  }, [me]);
 
   useEffect(() => {
     api.me().then((m) => { setMe(m); setEmail(m.user.email); }).catch(() => setMe(null));
@@ -30,8 +52,9 @@ export default function Testers() {
     setBusy(true); setErr(""); setDone("");
     try {
       await api.feedback({ kind, message: msg, email, device });
-      setDone("Thank you. It went straight to the team.");
+      setDone("Thank you. It went straight to the team; replies appear under Your messages below.");
       setMsg("");
+      loadThreads();
     } catch (e: any) {
       setErr(e.message || "could not send");
     } finally {
@@ -73,9 +96,10 @@ export default function Testers() {
 
       {CHAT_URL && (
         <div className="card" style={{ marginBottom: 18 }}>
-          <h3>Tester chat</h3>
+          <h3>Tester community</h3>
           <p className="muted" style={{ fontSize: ".9rem" }}>
-            Quick questions, live help and release notes: <a href={CHAT_URL} target="_blank" rel="noreferrer">join the tester channel</a>.
+            Release notes, questions and other testers: <a href={CHAT_URL} target="_blank" rel="noreferrer">GitHub Discussions</a>.
+            Private things (your device, your account) go in the form below; the team answers there.
           </p>
         </div>
       )}
@@ -105,6 +129,37 @@ export default function Testers() {
         {done && <p className="ok" style={{ marginTop: 10 }}>{done}</p>}
         {err && <p className="err" style={{ marginTop: 10 }}>{err}</p>}
       </section>
+
+      {me && (
+        <section className="card" style={{ marginTop: 18 }}>
+          <h3>Your messages</h3>
+          {!threads && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
+          {threads && threads.length === 0 && (
+            <p className="muted" style={{ margin: 0 }}>Nothing yet. When you send something above, it appears here with the team's reply.</p>
+          )}
+          {threads && threads.map((t) => (
+            <div key={t.id} style={{ borderTop: "1px solid var(--line)", padding: "12px 0" }}>
+              <p style={{ margin: 0 }}>
+                <span className="pill">{t.kind}</span>
+                <span className="muted" style={{ marginLeft: 8, fontSize: ".85rem" }}>{new Date(t.created_at).toLocaleString()}{t.device ? ` · ${t.device}` : ""}</span>
+              </p>
+              <p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{t.message}</p>
+              {t.replies.map((r) => (
+                <div key={r.id} style={{ margin: "10px 0 0 16px", padding: "10px 12px", borderRadius: 10, background: r.author === "ayni" ? "#eef6f5" : "#f4f4f7" }}>
+                  <p className="muted" style={{ margin: 0, fontSize: ".8rem" }}>
+                    <strong style={{ color: r.author === "ayni" ? "#0f6b63" : undefined }}>{r.author === "ayni" ? "Ayni team" : "You"}</strong> · {new Date(r.created_at).toLocaleString()}
+                  </p>
+                  <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{r.body}</p>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 8, marginTop: 10, marginLeft: 16 }}>
+                <input className="input" style={{ flex: 1 }} placeholder="Reply…" value={replyText[t.id] || ""} onChange={(e) => setReplyText({ ...replyText, [t.id]: e.target.value })} />
+                <button className="btn btn-ghost" disabled={!(replyText[t.id] || "").trim()} onClick={() => sendReply(t.id)}>Send</button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       <p className="muted" style={{ marginTop: 20, fontSize: ".85rem" }}>
         We store your message, email and device description to reply and to fix things. Nothing else. See the{" "}

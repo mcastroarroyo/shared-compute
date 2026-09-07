@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -196,6 +197,103 @@ func (s *Server) handleFeedback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("feedback received", "kind", kind, "app", e.App, "has_email", email != "")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleMyFeedback: GET /v1/me/feedback — the signed-in tester's own thread(s) with replies.
+func (s *Server) handleMyFeedback(w http.ResponseWriter, r *http.Request) {
+	if s.auth == nil {
+		writeError(w, http.StatusNotFound, "accounts_disabled", "accounts are not enabled")
+		return
+	}
+	u, ok := s.auth.SessionUser(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "not signed in")
+		return
+	}
+	rows, err := s.store.FeedbackForUser(r.Context(), u.ID, u.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_failed", "could not read messages")
+		return
+	}
+	if rows == nil {
+		rows = []store.FeedbackEntry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"feedback": rows})
+}
+
+// handleMyFeedbackReply: POST /v1/me/feedback/{id}/reply — tester continues a thread they own.
+func (s *Server) handleMyFeedbackReply(w http.ResponseWriter, r *http.Request) {
+	if s.auth == nil {
+		writeError(w, http.StatusNotFound, "accounts_disabled", "accounts are not enabled")
+		return
+	}
+	u, ok := s.auth.SessionUser(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "not signed in")
+		return
+	}
+	if !s.intakeAllowed(r) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "slow down")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad_id", "bad feedback id")
+		return
+	}
+	mine, err := s.store.FeedbackForUser(r.Context(), u.ID, u.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_failed", "could not read messages")
+		return
+	}
+	owned := false
+	for _, e := range mine {
+		if e.ID == id {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		writeError(w, http.StatusNotFound, "not_found", "no such thread")
+		return
+	}
+	var b struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&b); err != nil || len(strings.TrimSpace(b.Body)) < 2 {
+		writeError(w, http.StatusBadRequest, "empty", "write a message")
+		return
+	}
+	rep, err := s.store.AddFeedbackReply(context.WithoutCancel(r.Context()), id, "tester", clip(strings.TrimSpace(b.Body), 4000))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_failed", "could not save")
+		return
+	}
+	s.log.Info("tester replied", "feedback_id", id)
+	writeJSON(w, http.StatusOK, map[string]any{"reply": rep})
+}
+
+// adminFeedbackReply: POST /admin/feedback/{id}/reply — the team answers a tester.
+func (s *Server) adminFeedbackReply(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad_id", "bad feedback id")
+		return
+	}
+	var b struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&b); err != nil || len(strings.TrimSpace(b.Body)) < 2 {
+		writeError(w, http.StatusBadRequest, "empty", "write a reply")
+		return
+	}
+	rep, err := s.store.AddFeedbackReply(context.WithoutCancel(r.Context()), id, "ayni", clip(strings.TrimSpace(b.Body), 4000))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_failed", "could not save (does the feedback id exist?)")
+		return
+	}
+	events.Audit("feedback answered", map[string]string{"feedback_id": strconv.FormatInt(id, 10), "actor": adminActor(r)})
+	writeJSON(w, http.StatusOK, map[string]any{"reply": rep})
 }
 
 func (s *Server) adminFeedback(w http.ResponseWriter, r *http.Request) {

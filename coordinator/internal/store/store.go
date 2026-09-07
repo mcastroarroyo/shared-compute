@@ -124,16 +124,26 @@ type WaitlistEntry struct {
 
 // FeedbackEntry is one message from a tester or user (web app, phone app, site).
 type FeedbackEntry struct {
-	ID        int64     `json:"id"`
-	Kind      string    `json:"kind"`
-	Email     string    `json:"email"`
-	Device    string    `json:"device"`
-	Message   string    `json:"message"`
-	App       string    `json:"app"`
-	Version   string    `json:"version"`
-	UserID    string    `json:"user_id,omitempty"`
-	IPHash    string    `json:"-"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int64           `json:"id"`
+	Kind      string          `json:"kind"`
+	Email     string          `json:"email"`
+	Device    string          `json:"device"`
+	Message   string          `json:"message"`
+	App       string          `json:"app"`
+	Version   string          `json:"version"`
+	UserID    string          `json:"user_id,omitempty"`
+	IPHash    string          `json:"-"`
+	CreatedAt time.Time       `json:"created_at"`
+	Replies   []FeedbackReply `json:"replies"`
+}
+
+// FeedbackReply is one message in the thread under a feedback entry.
+type FeedbackReply struct {
+	ID         int64     `json:"id"`
+	FeedbackID int64     `json:"feedback_id"`
+	Author     string    `json:"author"` // ayni | tester
+	Body       string    `json:"body"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Proposal is one submitted community-initiative proposal.
@@ -177,6 +187,10 @@ type Store interface {
 	// AddFeedback stores tester / user feedback; FeedbackSince is the admin read.
 	AddFeedback(ctx context.Context, e FeedbackEntry) error
 	FeedbackSince(ctx context.Context, t time.Time) ([]FeedbackEntry, error)
+	// FeedbackForUser is the tester's own thread view: entries by user id or email, with replies.
+	FeedbackForUser(ctx context.Context, userID, email string) ([]FeedbackEntry, error)
+	// AddFeedbackReply appends a message under a feedback entry (author "ayni" or "tester").
+	AddFeedbackReply(ctx context.Context, feedbackID int64, author, body string) (FeedbackReply, error)
 	// WaitlistSince / ProposalsSince are admin reads.
 	WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error)
 	ProposalsSince(ctx context.Context, t time.Time) ([]Proposal, error)
