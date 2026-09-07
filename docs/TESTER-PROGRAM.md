@@ -18,19 +18,27 @@ releases. Everything here is operated from the console's **Feedback** page plus 
 5. **Answer within a day** in the chat channel or by mail; label the item; fix; ship;
    tell the tester it shipped. Weekly: one release note in the channel.
 
-## One channel
+## One channel (built)
 
-Pick one and put its invite link in `NEXT_PUBLIC_TESTER_CHAT_URL` for the web app
-(Cloudflare Pages → ayni-app → Settings → Environment variables), then redeploy. The
-Testers page shows a "Tester chat" card only when the variable is set.
+Two surfaces, both operated from the console, no third-party accounts needed:
 
-Recommended: a **Discord server** with three channels: `#announcements` (release notes,
-read-only), `#help` (pairing / install questions), `#feedback` (everything else). Discord
-is free, needs no phone number for testers, and its invite links can be revoked.
-Alternative for a very small group: a Telegram group.
+- **Private, per tester:** the form on `app.ayni-ai.com/testers` (also reachable from the phone app's
+  "Send feedback about this app"). Each entry is a thread. The team replies from the console's
+  **Feedback** page (inline reply box); the tester sees the reply under "Your messages" on the same
+  page and can answer there. API: `POST /v1/feedback`, `GET /v1/me/feedback`,
+  `POST /v1/me/feedback/{id}/reply`, `POST /admin/feedback/{id}/reply` (audited).
+- **Public, all testers:** GitHub Discussions on the repo
+  (https://github.com/mcastroarroyo/shared-compute/discussions). Testers already sign in to Ayni with
+  GitHub, so there is nothing new to join. Welcome thread: Discussions #2 (Announcements).
+  Release notes go in Announcements; questions in Q&A; ideas in Ideas.
 
-The operator creates the server (Discord does not allow bots to create servers); paste the
-invite here and in the env var. Suggested welcome message is at the end of this file.
+The public site has a "Testers wanted" page at `ayni-ai.com/testers` (nav link) and the README has a
+matching section. `NEXT_PUBLIC_TESTER_CHAT_URL` can override the community link if a chat server is
+added later.
+
+**Daily routine (operator or agent):** open the console Feedback page → reply to everything new →
+label in the reply ("pairing", "installer", …) → fix → when it ships, post release notes in
+Discussions → Announcements and reply to the original thread with "shipped in <version>".
 
 ## Where to find testers
 
