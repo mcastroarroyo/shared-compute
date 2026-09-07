@@ -4,7 +4,10 @@
 // micro-USD (1e-6 USD); never float money.
 package pricing
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 // Quote is the money outcome of one job.
 type Quote struct {
@@ -62,12 +65,16 @@ func QuoteJob(modelClass, tier string, promptTokens, completionTokens int, price
 	}
 	inPerM := int64(float64(r.inPerM) * priceMult)
 	outPerM := int64(float64(r.outPerM) * priceMult)
-	base := int64(promptTokens)*inPerM/1_000_000 + int64(completionTokens)*outPerM/1_000_000
+	// Round rather than truncate: a 10-token test reply on a MICRO model is
+	// worth 0.8 micro-USD and used to accrue 0, which made the provider ledger
+	// show "$0.00" against completed jobs.
+	base := int64(math.Round(float64(promptTokens)*float64(inPerM)/1_000_000 +
+		float64(completionTokens)*float64(outPerM)/1_000_000))
 	gross := int64(float64(base) * tierMultiplier(tier))
 	if qualityMult <= 0 {
 		qualityMult = 1.0
 	}
-	provider := int64(float64(gross) * revShare(tier) * qualityMult)
+	provider := int64(math.Round(float64(gross) * revShare(tier) * qualityMult))
 	return Quote{GrossMicros: gross, ProviderMicros: provider, ModelClass: class, Tier: tier}
 }
 

@@ -42,6 +42,13 @@ export default function Earnings() {
               <span>{e.devices}</span>
             </div>
           </div>
+          {e.jobs > 0 && e.owed_usd === 0 && (
+            <p className="muted" style={{ marginTop: 12, fontSize: ".88rem" }}>
+              Your devices completed {e.jobs} job{e.jobs === 1 ? "" : "s"}, but each was only a
+              few tokens, worth under a millionth of a dollar, so the total still rounds to
+              $0.00. Real workloads accrue normally.
+            </p>
+          )}
           <p className="muted" style={{ marginTop: 16, fontSize: ".88rem" }}>
             Payouts run on a schedule once a connected Stripe account is set up and a
             minimum is reached. This is the shadow ledger — the operator commits each

@@ -30,7 +30,10 @@ export default function Rent() {
           is never logged in plaintext. Single requests still work the OpenAI way.
         </p>
         <div className="cta">
-          <Link href="/waitlist/?for=rent" className="btn btn-teal">
+          <a href="https://app.ayni-ai.com/run/" className="btn btn-teal">
+            Run a workload now
+          </a>
+          <Link href="/waitlist/?for=rent" className="btn btn-ghost">
             Join the consumer waitlist
           </Link>
           <Link href="/technology/" className="btn btn-ghost">

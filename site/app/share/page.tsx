@@ -21,7 +21,10 @@ export default function Share() {
           and earn your share of every job it runs.
         </p>
         <div className="cta">
-          <Link href="/waitlist/?for=share" className="btn btn-primary">
+          <a href="https://app.ayni-ai.com/share/" className="btn btn-primary">
+            Share your computer now
+          </a>
+          <Link href="/waitlist/?for=share" className="btn btn-ghost">
             Join the provider waitlist
           </Link>
           <a href={REPO} className="btn btn-ghost">

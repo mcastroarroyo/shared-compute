@@ -31,9 +31,12 @@ export function Nav() {
               {label}
             </Link>
           ))}
-          <Link href="/waitlist/" className="btn btn-primary">
+          <Link href="/waitlist/" className="btn btn-ghost hide-sm">
             Join the waitlist
           </Link>
+          <a href="https://app.ayni-ai.com/" className="btn btn-primary">
+            Open the app
+          </a>
         </nav>
       </div>
     </header>
