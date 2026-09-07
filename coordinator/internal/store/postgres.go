@@ -429,3 +429,78 @@ func (p *PG) UsageSince(ctx context.Context, t time.Time) ([]UsageRow, error) {
 }
 
 func (p *PG) Close() { p.pool.Close() }
+
+// --- asynchronous workload runs (metadata only; never job content) ---
+
+func (p *PG) UpsertRun(ctx context.Context, r WorkloadRun) error {
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := p.pool.Exec(ct, `
+		INSERT INTO workload_runs (id, key_id, workload_id, model, status, total_items, done_items,
+			ok_items, failed_items, quoted_micros, charged_micros, prompt_tokens, completion_tokens,
+			wall_ms, fanout, webhook_url, webhook_state, label, error, created_at, started_at, finished_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+			COALESCE($20, now()),$21,$22)
+		ON CONFLICT (id) DO UPDATE SET
+			status = EXCLUDED.status, total_items = EXCLUDED.total_items,
+			done_items = EXCLUDED.done_items, ok_items = EXCLUDED.ok_items,
+			failed_items = EXCLUDED.failed_items, charged_micros = EXCLUDED.charged_micros,
+			prompt_tokens = EXCLUDED.prompt_tokens, completion_tokens = EXCLUDED.completion_tokens,
+			wall_ms = EXCLUDED.wall_ms, fanout = EXCLUDED.fanout,
+			webhook_state = EXCLUDED.webhook_state, error = EXCLUDED.error,
+			started_at = EXCLUDED.started_at, finished_at = EXCLUDED.finished_at`,
+		r.ID, r.KeyID, r.WorkloadID, r.Model, r.Status, r.TotalItems, r.DoneItems,
+		r.OKItems, r.FailedItems, r.QuotedMicros, r.ChargedMicros, r.PromptTokens, r.CompletionTokens,
+		r.WallMS, r.Fanout, r.WebhookURL, r.WebhookState, r.Label, r.Error,
+		nullTime(&r.CreatedAt), r.StartedAt, r.FinishedAt)
+	return err
+}
+
+func nullTime(t *time.Time) any {
+	if t == nil || t.IsZero() {
+		return nil
+	}
+	return *t
+}
+
+const runCols = `id, key_id, workload_id, model, status, total_items, done_items, ok_items,
+	failed_items, quoted_micros, charged_micros, prompt_tokens, completion_tokens, wall_ms,
+	fanout, webhook_url, webhook_state, label, error, created_at, started_at, finished_at`
+
+func scanRun(row interface{ Scan(...any) error }) (WorkloadRun, error) {
+	var r WorkloadRun
+	err := row.Scan(&r.ID, &r.KeyID, &r.WorkloadID, &r.Model, &r.Status, &r.TotalItems, &r.DoneItems,
+		&r.OKItems, &r.FailedItems, &r.QuotedMicros, &r.ChargedMicros, &r.PromptTokens,
+		&r.CompletionTokens, &r.WallMS, &r.Fanout, &r.WebhookURL, &r.WebhookState, &r.Label,
+		&r.Error, &r.CreatedAt, &r.StartedAt, &r.FinishedAt)
+	return r, err
+}
+
+func (p *PG) GetRun(ctx context.Context, id string) (WorkloadRun, bool, error) {
+	r, err := scanRun(p.pool.QueryRow(ctx, `SELECT `+runCols+` FROM workload_runs WHERE id=$1`, id))
+	if err != nil {
+		return WorkloadRun{}, false, nil //nolint:nilerr // absent or unreadable → "not found"
+	}
+	return r, true, nil
+}
+
+func (p *PG) ListRuns(ctx context.Context, keyID string, limit int) ([]WorkloadRun, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := p.pool.Query(ctx, `SELECT `+runCols+` FROM workload_runs
+		WHERE key_id=$1 ORDER BY created_at DESC LIMIT $2`, keyID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WorkloadRun
+	for rows.Next() {
+		r, err := scanRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

@@ -46,6 +46,7 @@ type Server struct {
 	hub       *wshub.Hub
 	stripe    *stripe.Client // nil unless SC_STRIPE_SECRET_KEY is set
 	quotes    *marketplace.Store
+	runs      *runRegistry    // in-memory async-run results (never persisted; see runs.go)
 	signer    manifest.Signer // nil unless SC_MANIFEST_SIGNING_KEY is set
 	auth      *auth.Auth      // nil unless Postgres + an OAuth client are configured
 	council   []council.Reviewer
@@ -113,6 +114,7 @@ func NewServer(cfg config.Config, reg *registry.Registry, job *jobs.Manager, st 
 		hub:       hub,
 		stripe:    newStripeClient(cfg.StripeSecretKey),
 		quotes:    marketplace.NewStore(time.Duration(cfg.QuoteTTLSeconds) * time.Second),
+		runs:      newRunRegistry(),
 		signer:    signer,
 		auth:      au,
 		council:   reviewers,
@@ -156,6 +158,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/workloads", instrument("v1_workloads_create", s.gate(s.withAuth(s.handleCreateWorkload))))
 	mux.Handle("GET /v1/workloads/{id}", instrument("v1_workloads_get", s.withAuth(s.handleGetWorkload)))
 	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.gate(s.withAuth(s.handleAcceptWorkload))))
+	mux.Handle("GET /v1/runs", instrument("v1_runs_list", s.withAuth(s.handleListRuns)))
+	mux.Handle("GET /v1/runs/{id}", instrument("v1_runs_get", s.withAuth(s.handleGetRun)))
+	mux.Handle("GET /v1/runs/{id}/results", instrument("v1_runs_results", s.withAuth(s.handleGetRunResults)))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	mux.Handle("POST /waitlist", instrument("waitlist", http.HandlerFunc(s.handleWaitlist)))
 	// Device onboarding + tester feedback (see onboard.go).

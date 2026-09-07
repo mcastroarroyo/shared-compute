@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,7 @@ type Mem struct {
 	earningEvents map[string]struct{} // "job_id\x00static_pk" settlement idempotency
 	waitlist      []WaitlistEntry
 	feedback      []FeedbackEntry
+	runs          map[string]WorkloadRun
 	proposals     []Proposal
 	credits       map[string]int64         // key_id -> micros
 	topupRefs     map[string]struct{}      // idempotency for topups
@@ -382,3 +384,44 @@ func (m *Mem) ProposalsSince(_ context.Context, _ time.Time) ([]Proposal, error)
 }
 
 func (m *Mem) Close() {}
+
+// --- asynchronous workload runs (metadata only; never job content) ---
+
+func (m *Mem) UpsertRun(_ context.Context, r WorkloadRun) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.runs == nil {
+		m.runs = map[string]WorkloadRun{}
+	}
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now()
+	}
+	m.runs[r.ID] = r
+	return nil
+}
+
+func (m *Mem) GetRun(_ context.Context, id string) (WorkloadRun, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.runs[id]
+	return r, ok, nil
+}
+
+func (m *Mem) ListRuns(_ context.Context, keyID string, limit int) ([]WorkloadRun, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []WorkloadRun
+	for _, r := range m.runs {
+		if r.KeyID == keyID {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}

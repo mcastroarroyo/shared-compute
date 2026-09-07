@@ -52,6 +52,11 @@ type Config struct {
 	MarketplaceMargin float64
 	// QuoteTTLSeconds is how long a workload quote stays acceptable. Default 600.
 	QuoteTTLSeconds int
+	// RunResultsTTLSeconds is how long an async run's results are held in memory for
+	// collection. Results are never written to disk (docs/WORKLOAD-RUNNERS.md). Default 3600.
+	RunResultsTTLSeconds int
+	// MaxAsyncRunsPerKey bounds concurrent queued/running async workloads per API key. Default 4.
+	MaxAsyncRunsPerKey int
 
 	// --- accounts / OAuth sign-in (app.ayni-ai.com). Postgres-only. ---
 	GitHubClientID, GitHubClientSecret string
@@ -116,6 +121,8 @@ func Load() (Config, error) {
 		PriceMultiplier:            getenvFloat("SC_PRICE_MULTIPLIER", 1.0),
 		MarketplaceMargin:          getenvFloat("SC_MARKETPLACE_MARGIN", 0.30),
 		QuoteTTLSeconds:            getenvInt("SC_QUOTE_TTL_SECONDS", 600),
+		RunResultsTTLSeconds:       getenvInt("SC_RUN_RESULTS_TTL_SECONDS", 3600),
+		MaxAsyncRunsPerKey:         getenvInt("SC_MAX_ASYNC_RUNS_PER_KEY", 4),
 		SpotPriceFactor:            getenvFloat("SC_SPOT_PRICE_FACTOR", 0.6),
 		SpotEtaSlack:               getenvFloat("SC_SPOT_ETA_SLACK", 3),
 		ManifestSigningKey:         getenv("SC_MANIFEST_SIGNING_KEY", ""),

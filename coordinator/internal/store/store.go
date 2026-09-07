@@ -146,6 +146,34 @@ type FeedbackReply struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// WorkloadRun is the metadata of one asynchronous workload run (docs/WORKLOAD-RUNNERS.md).
+// Prompt and completion content is deliberately absent: results live in coordinator
+// memory for a bounded window and are fetched over TLS, never written to disk.
+type WorkloadRun struct {
+	ID               string     `json:"id"`
+	KeyID            string     `json:"-"`
+	WorkloadID       string     `json:"workload_id"`
+	Model            string     `json:"model"`
+	Status           string     `json:"status"` // queued | running | succeeded | failed
+	TotalItems       int        `json:"total_items"`
+	DoneItems        int        `json:"done_items"`
+	OKItems          int        `json:"ok_items"`
+	FailedItems      int        `json:"failed_items"`
+	QuotedMicros     int64      `json:"-"`
+	ChargedMicros    int64      `json:"-"`
+	PromptTokens     int64      `json:"prompt_tokens"`
+	CompletionTokens int64      `json:"completion_tokens"`
+	WallMS           int64      `json:"wall_ms"`
+	Fanout           int        `json:"fanout"`
+	WebhookURL       string     `json:"-"`
+	WebhookState     string     `json:"webhook_state,omitempty"`
+	Label            string     `json:"label,omitempty"`
+	Error            string     `json:"error,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	StartedAt        *time.Time `json:"started_at,omitempty"`
+	FinishedAt       *time.Time `json:"finished_at,omitempty"`
+}
+
 // Proposal is one submitted community-initiative proposal.
 type Proposal struct {
 	Name      string    `json:"name"`
@@ -191,6 +219,15 @@ type Store interface {
 	FeedbackForUser(ctx context.Context, userID, email string) ([]FeedbackEntry, error)
 	// AddFeedbackReply appends a message under a feedback entry (author "ayni" or "tester").
 	AddFeedbackReply(ctx context.Context, feedbackID int64, author, body string) (FeedbackReply, error)
+
+	// --- asynchronous workload runs (metadata only; never job content) ---
+
+	// UpsertRun creates or updates a run's metadata row.
+	UpsertRun(ctx context.Context, r WorkloadRun) error
+	// GetRun reads one run by id.
+	GetRun(ctx context.Context, id string) (WorkloadRun, bool, error)
+	// ListRuns returns a key's most recent runs, newest first.
+	ListRuns(ctx context.Context, keyID string, limit int) ([]WorkloadRun, error)
 	// WaitlistSince / ProposalsSince are admin reads.
 	WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error)
 	ProposalsSince(ctx context.Context, t time.Time) ([]Proposal, error)

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/batch"
@@ -14,8 +16,6 @@ import (
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/marketplace"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/pricing"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/protocol"
-	"github.com/mcastroarroyo/shared-compute/coordinator/internal/registry"
-	"github.com/mcastroarroyo/shared-compute/coordinator/internal/relay"
 	"github.com/mcastroarroyo/shared-compute/coordinator/internal/scheduler"
 )
 
@@ -45,6 +45,15 @@ type workloadRequest struct {
 // spotPriceMult is the rate-card multiplier for a service class: on-demand uses
 // the configured multiplier as-is; spot also applies SpotPriceFactor, which
 // flows through to provider accruals too (both sides opt into the spot market).
+// acceptRequest is the optional body of POST /v1/workloads/{id}/accept. An empty body
+// keeps the original synchronous behaviour; "async": true queues the run instead
+// (docs/WORKLOAD-RUNNERS.md).
+type acceptRequest struct {
+	Async      bool   `json:"async"`
+	WebhookURL string `json:"webhook_url"`
+	Label      string `json:"label"`
+}
+
 func (s *Server) spotPriceMult(spot bool) float64 {
 	if spot {
 		return s.cfg.PriceMultiplier * s.cfg.SpotPriceFactor
@@ -300,75 +309,51 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Decide sync vs async before locking the quote, so a rejected async submission
+	// leaves the quote acceptable.
+	var opts acceptRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&opts) // empty body = sync
+	}
+	if opts.WebhookURL != "" && !strings.HasPrefix(opts.WebhookURL, "https://") {
+		writeError(w, http.StatusBadRequest, "bad_webhook", "webhook_url must be an https:// URL")
+		return
+	}
+	keyID := keyIDFrom(r.Context())
+	if opts.Async && s.runs.inflightFor(keyID) >= s.maxAsyncRunsPerKey() {
+		w.Header().Set("Retry-After", "30")
+		writeError(w, http.StatusTooManyRequests, "too_many_runs",
+			fmt.Sprintf("you already have %d workloads queued or running; wait for one to finish",
+				s.maxAsyncRunsPerKey()))
+		return
+	}
+
 	if _, locked := s.quotes.MarkAccepted(id); !locked {
 		writeError(w, http.StatusConflict, "already_accepted", "this workload has already been accepted")
 		return
 	}
 
-	acu := s.acuByPK(r.Context())
+	if opts.Async {
+		run, secret := s.startAsyncRun(r.Context(), q, keyID, opts.WebhookURL, clip(opts.Label, 120))
+		out := s.renderRun(run)
+		out["poll_url"] = "/v1/runs/" + run.ID
+		out["results_url"] = "/v1/runs/" + run.ID + "/results"
+		if secret != "" {
+			// Shown once: the runner needs it to verify the webhook signature.
+			out["webhook_secret"] = secret
+		}
+		w.Header().Set("Location", "/v1/runs/"+run.ID)
+		writeJSON(w, http.StatusAccepted, out)
+		return
+	}
+
 	created := time.Now().Unix()
-	// Spot runs at a reduced worker pool so it can't crowd out on-demand + chat.
-	concurrency := 0
-	if q.Spec.Spot {
-		concurrency = marketplace.SpotMaxConcurrency
+	out, err := s.executeWorkload(r.Context(), q, keyID, nil)
+	if err != nil {
+		mapRelayErr(w, err)
+		return
 	}
-	merged := &batch.Summary{Providers: map[string]int{}}
-	var wallMS int64
-	for _, chunk := range chunkItems(q.Spec.Items, batch.MaxItems) {
-		sum, err := batch.Run(r.Context(), s.reg, func(ctx context.Context, prov *registry.Provider, rr relay.Request, onDelta func(string) error) (*relay.Result, error) {
-			return relay.ExecuteOn(ctx, s.deps(), prov, rr, onDelta)
-		}, chunk, batch.Options{
-			Model:       q.Model,
-			MinTier:     q.Spec.Tier,
-			HWClass:     s.hwClassOf(q.Model),
-			ACUByPK:     acu,
-			Concurrency: concurrency,
-		})
-		if err != nil {
-			mapRelayErr(w, err)
-			return
-		}
-		mergeSummary(merged, sum, len(merged.Items))
-		if sum.WallMS > wallMS {
-			wallMS = sum.WallMS
-		}
-	}
-	merged.WallMS = wallMS
-	merged.Fanout = len(merged.Providers)
-
-	// Record usage + provider earnings per sub-job (spot accrues at the spot rate,
-	// same factor the consumer was quoted), then settle the consumer's balance
-	// ONCE at the quoted price (not the metered sum).
-	priceMult := s.spotPriceMult(q.Spec.Spot)
-	for _, it := range merged.Items {
-		if it.ErrCode != "" {
-			continue
-		}
-		s.recordJob(r.Context(), q.Model, &relay.Result{
-			Usage: it.Usage, FinishReason: it.FinishReason,
-			ProviderID: it.ProviderID, ProviderPK: it.ProviderPK,
-			TrustTier: it.TrustTier, JobID: it.JobID,
-		}, priceMult)
-	}
-	charge := q.Cost.TotalMicros
-	if merged.OK == 0 {
-		charge = 0 // nothing ran successfully — don't bill
-	}
-	if charge > 0 {
-		if e := s.store.AddCredit(context.WithoutCancel(r.Context()), keyIDFrom(r.Context()),
-			-charge, "workload", "", q.ID); e != nil {
-			s.log.Warn("workload debit failed", "err", e)
-		}
-	}
-
-	// Council reviews the run's logs for improvements (content-free stats only).
-	review := council.ReviewRun(r.Context(), council.RunStats{
-		WorkloadID: q.ID, Model: q.Model,
-		Items: len(q.Spec.Items), OK: merged.OK, Failed: merged.Failed,
-		Fanout: merged.Fanout, Concurrency: merged.Concurrency, WallMS: merged.WallMS,
-		PromptTokens: merged.PromptTokens, CompletionTokens: merged.CompletionTokens,
-		QuotedUSD: float64(q.Cost.TotalMicros) / 1e6, ChargedUSD: float64(charge) / 1e6,
-	})
+	merged := out.summary
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":          q.ID,
@@ -377,7 +362,7 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 		"class":       q.Spec.Class(),
 		"created":     created,
 		"quoted_usd":  round2usd(q.Cost.TotalMicros),
-		"charged_usd": round2usd(charge),
+		"charged_usd": round2usd(out.charged),
 		"items":       renderBatchItems(merged),
 		"usage": map[string]int{
 			"prompt_tokens":     merged.PromptTokens,
@@ -385,7 +370,7 @@ func (s *Server) handleAcceptWorkload(w http.ResponseWriter, r *http.Request) {
 			"total_tokens":      merged.PromptTokens + merged.CompletionTokens,
 		},
 		"stats":      batchStats(merged),
-		"run_review": review,
+		"run_review": out.review,
 	})
 }
 
