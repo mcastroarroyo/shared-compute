@@ -67,7 +67,22 @@ gcloud run deploy "$SVC" --project="$P" --region="$R" \
   --add-cloudsql-instances="$SQL_CONN" \
   --set-env-vars="SC_HTTP_ADDR=:8080,SC_HEARTBEAT_SECONDS=15,SC_RATE_PER_MIN=120,SC_MANIFEST_URL=https://models.ayni-ai.com,SC_REGISTRY_PUBKEY=p7UUs6aCFebGUfSvFV5Wczh7kYBCEW2tDRO+dV0IpDM=,SC_BILLING_ENFORCE=1,SC_DEMO_ENABLED=1,SC_PUBLIC_BASE_URL=https://app.ayni-ai.com,SC_MANIFEST_SIGNER_ID=ayni-coordinator-kms-v1,SC_MANIFEST_KMS_KEY=$KMS_KEY,SC_COUNCIL_MODEL_API=${SC_COUNCIL_MODEL_API:-},SC_COUNCIL_MODEL_ID=${SC_COUNCIL_MODEL_ID:-}" \
   --set-secrets="$SECRETS" \
-  --labels=app=ayni,tier=coordinator
+  --labels=app=ayni,tier=coordinator || DEPLOY_RC=$?
+
+# gcloud can exit non-zero while the new revision already holds 100% of traffic
+# (e.g. a stale failed revision in the service makes it report "not ready").
+# Trust the traffic split, not the exit code — and never skip the drain below,
+# or every provider stays stranded on the superseded instance.
+SERVING_NOW="$(gcloud run services describe "$SVC" --project="$P" --region="$R" \
+  --format='value(status.traffic[].tag,status.traffic[].percent)' | tr ';' '\n' | paste -d' ' - - 2>/dev/null || true)"
+if ! gcloud run services describe "$SVC" --project="$P" --region="$R" \
+  --format='value(status.traffic[].url)' | tr ';' '\n' | grep -q "^https://$NEW_TAG---"; then
+  echo "ERROR: revision tagged $NEW_TAG is not in the traffic list; aborting before drain" >&2
+  exit "${DEPLOY_RC:-1}"
+fi
+if [ -n "${DEPLOY_RC:-}" ]; then
+  echo "==> gcloud reported rc=$DEPLOY_RC but $NEW_TAG is serving; continuing (delete stale failed revisions to silence this)"
+fi
 
 URL="$(gcloud run services describe "$SVC" --project="$P" --region="$R" --format='value(status.url)')"
 echo "==> $URL"; curl -fsS "$URL/health"; echo
