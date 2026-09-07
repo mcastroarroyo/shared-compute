@@ -17,7 +17,9 @@ echo "==> native (FEATURES=llama)"
 FEATURES=llama ./build-native.sh
 
 SO=app/src/main/jniLibs/arm64-v8a/libsc_mobile.so
-if ! strings "$SO" | grep -q 'llama_model_load'; then
+# grep -a rather than strings: macOS's strings is Mach-O only and silently prints
+# nothing for an ELF .so, which made this check reject every good build.
+if ! grep -aq 'llama_model_load' "$SO"; then
   echo "ERROR: $SO has no llama backend (mock build) — refusing to package a release"; exit 1
 fi
 

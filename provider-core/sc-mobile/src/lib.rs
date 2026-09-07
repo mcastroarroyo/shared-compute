@@ -245,10 +245,37 @@ impl Provider {
         let cancel = CancellationToken::new();
         let c2 = cancel.clone();
         let handle = self.rt.spawn(async move {
-            if let Err(e) = provider_lib::run(cfg, sink.clone(), attest_hook, c2).await {
-                sink.on_event(ProviderEvent::Error {
-                    message: e.to_string(),
-                });
+            // Stay connected, like the desktop daemon: a coordinator redeploy
+            // (drain) or a network blip ends one run(); reconnect with capped
+            // backoff until stop() cancels. Without this the phone sat in
+            // "stopped" after every coordinator rollout until the user tapped
+            // Start again. Backoff resets after a session that lasted long
+            // enough to have been registered.
+            let mut backoff = std::time::Duration::from_secs(2);
+            let cap = std::time::Duration::from_secs(60);
+            loop {
+                let started = std::time::Instant::now();
+                let res = provider_lib::run(cfg.clone(), sink.clone(), attest_hook.clone(), c2.clone()).await;
+                if c2.is_cancelled() {
+                    return;
+                }
+                if let Err(e) = &res {
+                    sink.on_event(ProviderEvent::Error {
+                        message: format!("{e} — reconnecting in {}s", backoff.as_secs()),
+                    });
+                } else {
+                    sink.on_event(ProviderEvent::Connecting {
+                        url: format!("reconnecting in {}s", backoff.as_secs()),
+                    });
+                }
+                if started.elapsed() >= std::time::Duration::from_secs(20) {
+                    backoff = std::time::Duration::from_secs(2);
+                }
+                tokio::select! {
+                    _ = tokio::time::sleep(backoff) => {}
+                    _ = c2.cancelled() => return,
+                }
+                backoff = std::cmp::min(backoff * 2, cap);
             }
         });
         *guard = Some(Running { cancel, handle });
