@@ -52,6 +52,9 @@ Pre-alpha. Building milestone by milestone — see
    Vulkan/CPU                 SYCL/CPU                   Vulkan/OpenCL/NPU
 ```
 
+Related systems, including NVIDIA's Personal AI Router and how a PAIR cluster can join Ayni as one
+provider, are compared in [`docs/RELATED-WORK.md`](docs/RELATED-WORK.md).
+
 ## Repository layout
 
 | Path | What |
@@ -64,7 +67,7 @@ Pre-alpha. Building milestone by milestone — see
 | `model-registry/` | `sc-modelctl` — build and sign the model manifest |
 | `infra/` | Dockerfiles, `docker-compose.yml`, `fly.toml`, Terraform, CI |
 | `e2e-tests/` | Boot coordinator + provider + stub model; assert encrypted round-trip |
-| `docs/` | Roadmap, threat model, security notes |
+| `docs/` | Roadmap, threat model, security notes, [related work](docs/RELATED-WORK.md) |
 
 ## Quick start (local, no accounts)
 

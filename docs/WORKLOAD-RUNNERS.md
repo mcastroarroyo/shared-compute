@@ -263,3 +263,12 @@ of work you are moving.
 - **Ceilings.** Four concurrent runs per key by default, 120 requests per minute per key,
   5,000 items per workload. Chunk and pipeline within those.
 - **Spend.** Prepaid credit is the hard stop. `max_price_usd` is the soft one. Set both.
+
+## If you already run a LAN cluster
+
+Teams that route local inference through a LAN router such as NVIDIA's Personal AI Router keep the
+same request shape when they move batch work to Ayni: both speak the OpenAI Chat Completions
+contract. Keep interactive, in-building work on the cluster and send the queue to `POST /v1/workloads`
+or the Python client. A cluster can also become supply: run the Ayni provider daemon on one member
+with its backend pointed at the cluster's loopback proxy and the whole cluster joins as one
+`community`-tier node (see `docs/RELATED-WORK.md`).

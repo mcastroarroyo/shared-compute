@@ -44,6 +44,18 @@ candidate for a scoped spike.
 | M10.5 | done — spot tier (`"spot": true` on quote/workload: ~60% price, wider ETA band, capped concurrency) | live |
 | M7–M8 | not started | — |
 
+## Integrations and scheduler notes (added 2026-09-07)
+
+From the comparison with NVIDIA's Personal AI Router (`docs/RELATED-WORK.md`):
+
+- **PAIR cluster as one provider** — candidate spike: a provider-core backend that talks to a
+  loopback OpenAI-compatible engine, plus a manifest field mapping registry models to engine model
+  names. Turns an existing LAN GPU cluster into `community`-tier supply in one install.
+- **Scheduler** — add hysteresis to the load rank, reserve a node at dispatch for concurrent
+  fan-outs, and tolerate several missed heartbeats with a liveness probe before evicting a device.
+- **Overflow bridge** — presenting Ayni as a local node to a PAIR cluster needs a bridge or an
+  upstream remote-node feature; not planned until asked for.
+
 ## Milestones
 
 ### M0 — Foundations *(no accounts)*
