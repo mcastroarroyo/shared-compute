@@ -262,6 +262,11 @@ private fun App() {
             }
             if (justSaved) LaunchedEffect(savedAt) { kotlinx.coroutines.delay(2600); savedAt = 0 }
         }
+
+        // Testers: one tap to the feedback form (web), prefilled with this app's version.
+        TextButton(onClick = {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://app.ayni-ai.com/testers/?app=android&version=0.2.5")))
+        }) { Text("Send feedback about this app") }
     }
 }
 
