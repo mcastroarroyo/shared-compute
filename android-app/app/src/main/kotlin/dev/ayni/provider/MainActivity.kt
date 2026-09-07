@@ -76,6 +76,7 @@ private fun App() {
     var s by remember { mutableStateOf(store.load()) }
     val status by ProviderController.status.collectAsStateWithLifecycle()
     var showSettings by remember { mutableStateOf(false) }
+    val configured = s.isConfigured
 
     val notifPerm = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -103,40 +104,52 @@ private fun App() {
 
         StatusPill(status)
 
-        Tachometer(status)
-
-        // Live earnings + throughput ledger.
-        var uptime by remember { mutableStateOf("") }
-        LaunchedEffect(status.startedAtMs, status.phase) {
-            while (true) {
-                uptime = if (status.startedAtMs == 0L) "—"
-                else formatDuration(System.currentTimeMillis() - status.startedAtMs)
-                delay(1000)
-            }
-        }
-        val perHr = status.lastTps * 3600 / 1_000_000.0 * ProviderController.USD_PER_MTOK
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Est. earnings", "$" + String.format(Locale.US, "%.5f", status.earningsUsd),
-                Modifier.weight(1f))
-            Stat("At this rate", "$" + String.format(Locale.US, "%.4f", perHr) + "/hr",
-                Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Tokens served", compact(status.tokensServed), Modifier.weight(1f))
-            Stat("Jobs", status.jobsDone.toString(), Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Uptime", uptime, Modifier.weight(1f))
-            Stat("Peak", String.format(Locale.US, "%.1f tok/s", status.peakTps), Modifier.weight(1f))
-        }
-        Text(
-            "Earnings are a local estimate at $${String.format(Locale.US, "%.2f", ProviderController.USD_PER_MTOK)}/M output tokens. " +
-                "Final payouts are settled by the coordinator.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (!configured) PairCard(
+            coordinatorUrl = s.coordinatorUrl,
+            onPaired = { token ->
+                s = s.copy(registrationToken = token)
+                store.save(s)
+                if (Build.VERSION.SDK_INT >= 33)
+                    notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+                ProviderService.start(ctx)
+            },
         )
 
-        val configured = s.isConfigured
+        if (configured) Tachometer(status)
+
+        if (configured) {
+        // Live earnings + throughput ledger.
+            var uptime by remember { mutableStateOf("") }
+            LaunchedEffect(status.startedAtMs, status.phase) {
+                while (true) {
+                    uptime = if (status.startedAtMs == 0L) "—"
+                    else formatDuration(System.currentTimeMillis() - status.startedAtMs)
+                    delay(1000)
+                }
+            }
+            val perHr = status.lastTps * 3600 / 1_000_000.0 * ProviderController.USD_PER_MTOK
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Stat("Est. earnings", "$" + String.format(Locale.US, "%.5f", status.earningsUsd),
+                    Modifier.weight(1f))
+                Stat("At this rate", "$" + String.format(Locale.US, "%.4f", perHr) + "/hr",
+                    Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Stat("Tokens served", compact(status.tokensServed), Modifier.weight(1f))
+                Stat("Jobs", status.jobsDone.toString(), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Stat("Uptime", uptime, Modifier.weight(1f))
+                Stat("Peak", String.format(Locale.US, "%.1f tok/s", status.peakTps), Modifier.weight(1f))
+            }
+            Text(
+                "Earnings are a local estimate at $${String.format(Locale.US, "%.2f", ProviderController.USD_PER_MTOK)}/M output tokens. " +
+                    "Final payouts are settled by the coordinator.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         val running = status.phase == ProviderController.Phase.CONNECTING ||
             status.phase == ProviderController.Phase.REGISTERED ||
             status.phase == ProviderController.Phase.BLOCKED
@@ -167,17 +180,6 @@ private fun App() {
                 onClick = { confirmStop = true }
             ) { Text("Stop") }
         }
-        if (!configured) PairCard(
-            coordinatorUrl = s.coordinatorUrl,
-            onPaired = { token ->
-                s = s.copy(registrationToken = token)
-                store.save(s)
-                if (Build.VERSION.SDK_INT >= 33)
-                    notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
-                ProviderService.start(ctx)
-            },
-        )
-
         val powerManager = remember { ctx.getSystemService(PowerManager::class.java) }
         var batteryExempt by remember {
             mutableStateOf(powerManager?.isIgnoringBatteryOptimizations(ctx.packageName) ?: true)
@@ -429,7 +431,22 @@ private fun PairCard(coordinatorUrl: String, onPaired: (String) -> Unit) {
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Ascii,
                     capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters,
+                    autoCorrect = false,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
                 ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                    if (code.length == 6 && !busy) {
+                        busy = true; error = ""
+                        scope.launch {
+                            val r = withContext(Dispatchers.IO) { redeemPairCode(apiBase, code) }
+                            busy = false
+                            r.fold(
+                                onSuccess = { (token, acct) -> account = acct; onPaired(token) },
+                                onFailure = { error = it.message ?: "could not pair" },
+                            )
+                        }
+                    }
+                }),
                 isError = error.isNotEmpty(),
             )
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

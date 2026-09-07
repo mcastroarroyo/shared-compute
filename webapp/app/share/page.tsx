@@ -209,6 +209,10 @@ $env:SC_MODEL_PATH="$HOME\\ayni\\qwen2.5-0.5b-instruct-q4_k_m.gguf"
           <ol start={3} style={{ margin: "14px 0 0 18px", padding: 0, lineHeight: 1.7 }}>
             <li>Tap <strong>Pair</strong>. The phone connects and starts sharing while it is charging and on Wi-Fi.</li>
           </ol>
+          <p className="muted" style={{ marginTop: 10, fontSize: ".86rem" }}>
+            First start only: the phone downloads a 0.5 GB model and runs a short benchmark, so it shows
+            “connecting” for a few minutes before it appears below.
+          </p>
           <p className="muted" style={{ marginTop: 14, fontSize: ".86rem" }}>
             Prefer the long way?{" "}
             <button className="btn btn-ghost" style={{ padding: "2px 10px", fontSize: ".82rem" }} onClick={() => setShowToken((v) => !v)}>
