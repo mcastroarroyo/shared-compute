@@ -118,6 +118,7 @@ func (a *Auth) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /v1/me", a.handleMe)
 	mux.HandleFunc("GET /v1/me/earnings", a.handleMyEarnings)
+	mux.HandleFunc("POST /v1/me/pair", a.handlePairCreate)
 }
 
 func (a *Auth) handleMyEarnings(w http.ResponseWriter, r *http.Request) {

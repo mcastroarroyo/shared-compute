@@ -21,8 +21,8 @@ android {
         applicationId = "dev.ayni.provider"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.2.4"
+        versionCode = 7
+        versionName = "0.2.5"
         // The native lib is produced by ../build-native.sh into src/main/jniLibs.
         ndk { abiFilters += listOf("arm64-v8a") }
     }

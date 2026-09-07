@@ -251,6 +251,35 @@ func (p *PG) AddProposal(ctx context.Context, pr Proposal) error {
 	return err
 }
 
+func (p *PG) AddFeedback(ctx context.Context, e FeedbackEntry) error {
+	ct, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := p.pool.Exec(ct, `
+		INSERT INTO feedback (kind, email, device, message, app, version, user_id, ip_hash)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		e.Kind, e.Email, e.Device, e.Message, e.App, e.Version, e.UserID, e.IPHash)
+	return err
+}
+
+func (p *PG) FeedbackSince(ctx context.Context, t time.Time) ([]FeedbackEntry, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, kind, email, device, message, app, version, user_id, created_at FROM feedback
+		WHERE created_at >= $1 ORDER BY created_at DESC LIMIT 500`, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FeedbackEntry
+	for rows.Next() {
+		var e FeedbackEntry
+		if err := rows.Scan(&e.ID, &e.Kind, &e.Email, &e.Device, &e.Message, &e.App, &e.Version, &e.UserID, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (p *PG) WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT email, interest, note, created_at FROM waitlist

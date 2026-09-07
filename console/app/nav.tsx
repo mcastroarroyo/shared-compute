@@ -12,6 +12,7 @@ const links: [string, string][] = [
   ["/controls/", "Controls"],
   ["/keys/", "API keys"],
   ["/payouts/", "Payouts"],
+  ["/feedback/", "Feedback"],
   ["/playground/", "Playground"],
   ["/settings/", "Settings"],
 ];

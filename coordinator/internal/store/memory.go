@@ -25,6 +25,7 @@ type Mem struct {
 	earningRows   []EarningRow
 	earningEvents map[string]struct{} // "job_id\x00static_pk" settlement idempotency
 	waitlist      []WaitlistEntry
+	feedback      []FeedbackEntry
 	proposals     []Proposal
 	credits       map[string]int64         // key_id -> micros
 	topupRefs     map[string]struct{}      // idempotency for topups
@@ -317,6 +318,25 @@ func (m *Mem) AddProposal(_ context.Context, p Proposal) error {
 	m.proposals = append(m.proposals, p)
 	m.mu.Unlock()
 	return nil
+}
+
+func (m *Mem) AddFeedback(_ context.Context, e FeedbackEntry) error {
+	m.mu.Lock()
+	e.ID = int64(len(m.feedback) + 1)
+	if e.CreatedAt.IsZero() {
+		e.CreatedAt = time.Now()
+	}
+	m.feedback = append(m.feedback, e)
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Mem) FeedbackSince(_ context.Context, _ time.Time) ([]FeedbackEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]FeedbackEntry, len(m.feedback))
+	copy(out, m.feedback)
+	return out, nil
 }
 
 func (m *Mem) WaitlistSince(_ context.Context, _ time.Time) ([]WaitlistEntry, error) {

@@ -158,6 +158,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/workloads/{id}/accept", instrument("v1_workloads_accept", s.gate(s.withAuth(s.handleAcceptWorkload))))
 	mux.HandleFunc("/ws/provider", s.hub.HandleProvider)
 	mux.Handle("POST /waitlist", instrument("waitlist", http.HandlerFunc(s.handleWaitlist)))
+	// Device onboarding + tester feedback (see onboard.go).
+	mux.Handle("POST /v1/pair/{code}", instrument("pair_redeem", http.HandlerFunc(s.handlePairRedeem)))
+	mux.Handle("GET /v1/me/devices", instrument("my_devices", http.HandlerFunc(s.handleMyDevices)))
+	mux.Handle("POST /v1/feedback", instrument("feedback", http.HandlerFunc(s.handleFeedback)))
 	mux.Handle("POST /initiatives", instrument("initiatives", http.HandlerFunc(s.handleInitiative)))
 	mux.Handle("GET /billing/balance", instrument("billing_balance", s.withAuth(s.handleBalance)))
 	mux.Handle("POST /billing/checkout", instrument("billing_checkout", s.withAuth(s.handleCheckout)))

@@ -50,9 +50,9 @@ export default function Dashboard() {
 
       <div className="grid c3">
         <Link href="/share/" className="card">
-          <h3>Share your computer</h3>
+          <h3>Add a device</h3>
           <p className="muted">
-            Run a small provider on your laptop or desktop. It earns a share of every
+            Phone, Mac, Linux or Windows: pair it in under a minute. It earns 70% of every
             job it completes.
           </p>
         </Link>
@@ -68,6 +68,9 @@ export default function Dashboard() {
           <p className="muted">What your shared machines have earned, and payout status.</p>
         </Link>
       </div>
+      <p className="muted" style={{ marginTop: 20, fontSize: ".9rem" }}>
+        Testing Ayni? <Link href="/testers/">Tell us what you found</Link>. Every message reaches the team the same minute.
+      </p>
     </>
   );
 }

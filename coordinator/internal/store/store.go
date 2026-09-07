@@ -122,6 +122,20 @@ type WaitlistEntry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// FeedbackEntry is one message from a tester or user (web app, phone app, site).
+type FeedbackEntry struct {
+	ID        int64     `json:"id"`
+	Kind      string    `json:"kind"`
+	Email     string    `json:"email"`
+	Device    string    `json:"device"`
+	Message   string    `json:"message"`
+	App       string    `json:"app"`
+	Version   string    `json:"version"`
+	UserID    string    `json:"user_id,omitempty"`
+	IPHash    string    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Proposal is one submitted community-initiative proposal.
 type Proposal struct {
 	Name      string    `json:"name"`
@@ -160,6 +174,9 @@ type Store interface {
 	AddWaitlist(ctx context.Context, e WaitlistEntry) error
 	// AddProposal stores a submitted initiative proposal.
 	AddProposal(ctx context.Context, p Proposal) error
+	// AddFeedback stores tester / user feedback; FeedbackSince is the admin read.
+	AddFeedback(ctx context.Context, e FeedbackEntry) error
+	FeedbackSince(ctx context.Context, t time.Time) ([]FeedbackEntry, error)
 	// WaitlistSince / ProposalsSince are admin reads.
 	WaitlistSince(ctx context.Context, t time.Time) ([]WaitlistEntry, error)
 	ProposalsSince(ctx context.Context, t time.Time) ([]Proposal, error)

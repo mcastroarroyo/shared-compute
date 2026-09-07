@@ -152,6 +152,7 @@ export const api = {
   usage: (hours = 24) => adminFetch(`/admin/usage?since_hours=${hours}`),
   earnings: (hours = 168) => adminFetch(`/admin/earnings?since_hours=${hours}`),
   waitlist: () => adminFetch("/admin/waitlist"),
+  feedback: () => adminFetch("/admin/feedback"),
 
   // billing (consumer key)
   balance: () => consumerFetch("/billing/balance"),

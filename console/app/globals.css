@@ -92,3 +92,7 @@ button.danger { background: #7a2626; }
 .log-row.audit { background: #171325; }
 .log-attrs { color: var(--text); opacity: .85; word-break: break-all; }
 img { max-width: 100%; }
+
+.chip { font: inherit; font-size: .85rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.chip.on { background: var(--accent, #3b82f6); color: #fff; border-color: transparent; }
+.pill.warn { color: #b7791f; border-color: #b7791f; }

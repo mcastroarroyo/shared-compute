@@ -50,6 +50,35 @@ export const api = {
 
   earnings: (): Promise<{ owed_usd: number; jobs: number; devices: number }> =>
     req("/v1/me/earnings"),
+
+  // Device onboarding: a short-lived pairing code the phone app redeems, and
+  // the live list of this account's devices (online + offline).
+  pairCode: (): Promise<{ code: string; expires_at: string; ttl_seconds: number }> =>
+    req("/v1/me/pair", { method: "POST" }),
+  devices: (): Promise<{ devices: MyDevice[]; online: number; total: number }> =>
+    req("/v1/me/devices"),
+
+  feedback: (input: { kind: string; message: string; email?: string; device?: string; app?: string; version?: string }) =>
+    req("/v1/feedback", { method: "POST", body: JSON.stringify({ app: "webapp", ...input }) }),
+};
+
+export type MyDevice = {
+  static_pk: string;
+  online: boolean;
+  kind: "phone" | "pc" | "other";
+  platform?: string;
+  arch?: string;
+  cpu?: string;
+  trust_tier?: string;
+  class?: string;
+  acu: number;
+  tps: number;
+  ram_mb?: number;
+  active_jobs: number;
+  connected_for?: string;
+  last_seen?: string;
+  jobs_unpaid: number;
+  owed_usd: number;
 };
 
 export function signInURL(provider: string) {

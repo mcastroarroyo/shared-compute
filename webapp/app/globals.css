@@ -80,3 +80,9 @@ pre.cmd {
 .kv:last-child { border-bottom: 0; }
 .big { font-size: 1.9rem; font-weight: 800; letter-spacing: -.02em; }
 .result { white-space: pre-wrap; background: #fcfdfd; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+
+.grid.c4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 720px) { .grid.c4 { grid-template-columns: repeat(2, 1fr); } }
+
+.input { font: inherit; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
+.input:focus { outline: 2px solid var(--navy); outline-offset: 1px; }

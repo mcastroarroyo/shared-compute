@@ -23,6 +23,10 @@ func (s *Server) handleInstallScript(w http.ResponseWriter, _ *http.Request) {
 		modelURL = "https://models.ayni-ai.com"
 	}
 	repo := "https://github.com/mcastroarroyo/shared-compute"
+	appBase := s.cfg.AppURL
+	if appBase == "" {
+		appBase = "https://app.ayni-ai.com"
+	}
 
 	script := fmt.Sprintf(`#!/usr/bin/env bash
 # Ayni provider installer. Runs your machine as a compute provider.
@@ -69,7 +73,22 @@ if [ -z "$VERIFY_KEY" ] && [ -n "$SIGNER" ] && [ -n "$PUBKEY" ]; then VERIFY_KEY
 [ -n "$VERIFY_KEY" ] && echo "==> manifest signing key pinned: ${VERIFY_KEY%%%%:*}"
 
 echo "==> connecting to $COORD_WS"
-exec env \
+echo ""
+echo "    Ayni provider is starting. Leave this window open; press Ctrl-C to stop sharing."
+echo "    Watch it appear at %s/share/ — the page confirms the device within seconds."
+echo "    Set SC_VERBOSE=1 to see the model runtime's own log lines."
+echo ""
+
+# The model runtime prints a great deal of low-level detail (tensor loading,
+# Metal/CUDA kernels). Hide it unless the operator asks, keeping the daemon's
+# own lines (connecting / registered / job finished / errors).
+quiet() {
+  if [ -n "${SC_VERBOSE:-}" ]; then cat; else
+    grep --line-buffered -vE '^(ggml_|llama_|print_info|load(_tensors)?:|create_tensor|done_getting|sched_reserve|graph_reserve|resolve_fused|init_tokenizer|set_abort|~llama|\.+$)'
+  fi
+}
+
+env \
   SC_COORDINATOR_URL="$COORD_WS" \
   SC_REGISTRATION_TOKEN="$SC_REGISTRATION_TOKEN" \
   SC_MODEL="$MODEL" \
@@ -78,8 +97,8 @@ exec env \
   SC_IDENTITY_PATH="$DIR/identity.key" \
   SC_MANIFEST_VERIFY_KEY="$VERIFY_KEY" \
   SC_REQUIRE_MANIFEST="${SC_REQUIRE_MANIFEST:-1}" \
-  "$BIN"
-`, ws, model, modelURL, repo, repo, apiBase)
+  "$BIN" 2>&1 | quiet
+`, ws, model, modelURL, repo, repo, apiBase, appBase)
 
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

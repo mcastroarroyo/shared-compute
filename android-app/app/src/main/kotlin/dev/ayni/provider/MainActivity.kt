@@ -44,7 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -72,7 +75,7 @@ private fun App() {
     val store = remember { ConfigStore(ctx) }
     var s by remember { mutableStateOf(store.load()) }
     val status by ProviderController.status.collectAsStateWithLifecycle()
-    var showSettings by remember { mutableStateOf(!s.isConfigured) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val notifPerm = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -164,7 +167,16 @@ private fun App() {
                 onClick = { confirmStop = true }
             ) { Text("Stop") }
         }
-        if (!configured) Text("Enter a registration token in Settings, then Start.")
+        if (!configured) PairCard(
+            coordinatorUrl = s.coordinatorUrl,
+            onPaired = { token ->
+                s = s.copy(registrationToken = token)
+                store.save(s)
+                if (Build.VERSION.SDK_INT >= 33)
+                    notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+                ProviderService.start(ctx)
+            },
+        )
 
         val powerManager = remember { ctx.getSystemService(PowerManager::class.java) }
         var batteryExempt by remember {
@@ -367,6 +379,106 @@ private fun formatDuration(ms: Long): String {
     return if (h > 0) String.format(Locale.US, "%dh %02dm", h, m)
     else String.format(Locale.US, "%dm %02ds", m, ss)
 }
+
+/**
+ * First-run pairing: type the 6-letter code from app.ayni-ai.com/share and the
+ * app fetches the account's registration token itself, saves it and starts.
+ * The long path (paste the token in Settings) still works underneath.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PairCard(coordinatorUrl: String, onPaired: (String) -> Unit) {
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var account by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val apiBase = coordinatorUrl
+        .replace(Regex("^wss://"), "https://").replace(Regex("^ws://"), "http://")
+        .substringBefore("/ws/")
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Pair this phone", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "On a computer, sign in at app.ayni-ai.com, open Add a device, choose " +
+                    "Android phone, and type the 6-letter code shown there.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = code,
+                onValueChange = { v ->
+                    code = v.uppercase(Locale.US).filter { it.isLetterOrDigit() }.take(6)
+                    error = ""
+                },
+                label = { Text("Pairing code") },
+                placeholder = { Text("7KQ4M2") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Ascii,
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters,
+                ),
+                isError = error.isNotEmpty(),
+            )
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (account.isNotEmpty()) Text("Paired with $account. Starting…", style = MaterialTheme.typography.bodySmall)
+            Button(
+                enabled = code.length == 6 && !busy,
+                onClick = {
+                    busy = true; error = ""
+                    scope.launch {
+                        val r = withContext(Dispatchers.IO) { redeemPairCode(apiBase, code) }
+                        busy = false
+                        r.fold(
+                            onSuccess = { (token, acct) -> account = acct; onPaired(token) },
+                            onFailure = { error = it.message ?: "could not pair" },
+                        )
+                    }
+                },
+            ) { Text(if (busy) "Pairing…" else "Pair") }
+            Text(
+                "Or paste a registration token under Settings below.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** POST {api}/v1/pair/{code} → (registration_token, account hint). Blocking; call off the main thread. */
+private fun redeemPairCode(apiBase: String, code: String): Result<Pair<String, String>> = runCatching {
+    val url = java.net.URL("$apiBase/v1/pair/$code")
+    val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 10_000; readTimeout = 15_000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "ayni-android")
+        doOutput = true
+    }
+    conn.outputStream.use { it.write(ByteArray(0)) }
+    val status = conn.responseCode
+    val body = (if (status < 400) conn.inputStream else conn.errorStream)?.bufferedReader()?.readText() ?: ""
+    conn.disconnect()
+    when (status) {
+        200 -> {
+            val j = org.json.JSONObject(body)
+            val tok = j.optString("registration_token")
+            if (tok.isBlank()) throw IllegalStateException("no token in response")
+            tok to j.optString("account", "your account")
+        }
+        404 -> throw IllegalStateException("That code is not valid any more. Get a fresh one from app.ayni-ai.com/share.")
+        429 -> throw IllegalStateException("Too many attempts. Wait a minute and try again.")
+        else -> throw IllegalStateException("Pairing failed (HTTP $status). Check your connection and try again.")
+    }
+}
+
 
 @Composable
 private fun Field(
