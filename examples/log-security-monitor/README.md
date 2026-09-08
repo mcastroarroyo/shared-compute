@@ -8,6 +8,13 @@ This directory is a working runner, not a slide. It includes a `--selftest` that
 whether the model is actually good enough for your logs — read
 [the measured results](#measured-quality-read-this-first) before you wire it to anything.
 
+## No code: the MCP server
+
+The same triage is available as MCP tools (`ayni_triage_logs`, `ayni_triage_selftest`) for
+Claude Desktop, Claude Code or Cursor, with a dry run first and a price cap on the spend.
+See [docs/MCP-SERVER.md](../../docs/MCP-SERVER.md). The shared triage logic lives in
+`clients/python/ayni/triage.py`; this script imports it.
+
 ## Quick start
 
 ```bash

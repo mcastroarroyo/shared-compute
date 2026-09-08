@@ -67,6 +67,7 @@ provider, are compared in [`docs/RELATED-WORK.md`](docs/RELATED-WORK.md).
 | `model-registry/` | `sc-modelctl` — build and sign the model manifest |
 | `infra/` | Dockerfiles, `docker-compose.yml`, `fly.toml`, Terraform, CI |
 | `e2e-tests/` | Boot coordinator + provider + stub model; assert encrypted round-trip |
+| `clients/python/` | Runner client and the [MCP server](docs/MCP-SERVER.md) (standard library only) |
 | `docs/` | Roadmap, threat model, security notes, [related work](docs/RELATED-WORK.md) |
 
 ## Quick start (local, no accounts)

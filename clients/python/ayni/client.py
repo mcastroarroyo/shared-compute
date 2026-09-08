@@ -236,6 +236,13 @@ class Ayni:
                 err = payload.get("error", {}) if isinstance(payload, dict) else {}
                 code = err.get("code", "") if isinstance(err, dict) else ""
                 msg = err.get("message", str(e)) if isinstance(err, dict) else str(e)
+                if e.code == 403 and not isinstance(payload, dict):
+                    # A non-JSON 403 did not come from the coordinator: an edge firewall
+                    # (WAF) refused the request body, typically because a prompt contains
+                    # something that looks like an attack string. Say so.
+                    code = "edge_blocked"
+                    msg = ("request refused at the network edge before reaching Ayni (HTTP 403, "
+                           "non-JSON body); a web application firewall matched the request content")
 
                 if e.code == 402:
                     raise InsufficientCredit(msg, status=402, code=code or "insufficient_credit") from None
@@ -253,6 +260,39 @@ class Ayni:
             time.sleep(min(wait, 30.0))
             delay = min(delay * 2, 30.0)
         raise AyniError(f"request failed after retries: {last}")
+
+    # --- account and supply ---
+
+    def health(self) -> dict[str, Any]:
+        """Coordinator liveness. No key needed."""
+        return self._request("GET", "/healthz")
+
+    def models(self) -> list[dict[str, Any]]:
+        """Models the network serves right now, with hardware class and context length."""
+        return list(self._request("GET", "/v1/models").get("data", []))
+
+    def balance(self) -> dict[str, Any]:
+        """Prepaid credit on this key: {key_id, credit_usd, enforced}."""
+        return self._request("GET", "/billing/balance")
+
+    def checkout_url(self, amount_usd: float) -> str:
+        """Create a Stripe Checkout link to add credit. The link is opened by a person;
+        nothing is charged by calling this."""
+        p = self._request("POST", "/billing/checkout", {"amount_usd": float(amount_usd)})
+        return str(p.get("url") or p.get("checkout_url") or "")
+
+    def get_quote(self, quote_id: str) -> Quote:
+        """Re-read a quote by id (404 once it has expired)."""
+        p = self._request("GET", f"/v1/workloads/{quote_id}")
+        est, council = p.get("estimate", {}), p.get("council", {})
+        return Quote(
+            id=p.get("id", ""),
+            total_usd=p.get("price", {}).get("total_usd", 0.0),
+            eta_seconds=est.get("eta_seconds", 0),
+            eligible_nodes=est.get("eligible_nodes", 0),
+            council_decision=council.get("decision", "") if isinstance(council, dict) else "",
+            raw=p,
+        )
 
     # --- quoting ---
 
@@ -362,6 +402,15 @@ class Ayni:
     def accept(self, quote_id: str) -> RunResult:
         """Run an accepted quote and wait for it. Use `submit` for large batches."""
         return _result_from(self._request("POST", f"/v1/workloads/{quote_id}/accept"))
+
+    def accept_async(self, quote_id: str, *, webhook_url: str | None = None, label: str = "") -> Run:
+        """Queue an already-quoted workload and return immediately (see `submit`)."""
+        body: dict[str, Any] = {"async": True}
+        if webhook_url:
+            body["webhook_url"] = webhook_url
+        if label:
+            body["label"] = label
+        return _run_from(self._request("POST", f"/v1/workloads/{quote_id}/accept", body))
 
     def run(
         self,

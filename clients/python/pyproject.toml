@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ayni"
+version = "0.1.0"
+description = "Ayni workload runner client and MCP server: quote, run and collect batch inference on the Ayni network."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Zalesgen LLC" }]
+keywords = ["ayni", "inference", "mcp", "batch", "llm"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://ayni-ai.com"
+Repository = "https://github.com/mcastroarroyo/shared-compute"
+Documentation = "https://github.com/mcastroarroyo/shared-compute/blob/main/docs/MCP-SERVER.md"
+
+[project.scripts]
+ayni-mcp = "ayni.mcp:main"
+
+[tool.setuptools.packages.find]
+include = ["ayni*"]

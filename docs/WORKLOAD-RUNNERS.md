@@ -11,6 +11,7 @@ move a pipeline off a hosted API or your own GPUs.
 - API base: `https://api.ayni-ai.com`
 - Client: [`clients/python`](../clients/python) (standard library only)
 - Worked example: [`examples/log-security-monitor`](../examples/log-security-monitor)
+- No code at all: the [MCP server](MCP-SERVER.md) gives Claude Desktop, Claude Code or Cursor the same quote, run and collect steps with a price cap on every spend
 
 ---
 
