@@ -237,11 +237,9 @@ labelled lines for a measurement that means something for your logs.
 | `http_401` | key missing or wrong | check the MCP config |
 | `edge_blocked` | a firewall in front of the API matched the prompt text | see the note below |
 
-**Known issue (2026-09-07).** The production edge firewall currently refuses prompts that
-contain attack-looking strings such as `../../etc/passwd` or `UNION SELECT`, which security
-logs contain by nature. The tools report this as `edge_blocked`. A scoped rule change is
-written up in `docs/SECURITY.md` and awaits the operator; until it lands, triage of such lines
-fails at the edge instead of running. Lines without such strings run normally.
+`edge_blocked` should not occur against production since 2026-09-08, when the edge firewall
+stopped inspecting prompt bodies on the inference endpoints (see `docs/SECURITY.md`). It can
+still appear behind a corporate proxy or another firewall of your own.
 
 ## 10. What the server does not do
 

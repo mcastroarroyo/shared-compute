@@ -50,32 +50,35 @@ hardening step.
 > known device; reconcile the pinned set against Google's official published roots and
 > add automated freshness checks.
 
-## Edge WAF and inference content (open, 2026-09-07)
+## Edge WAF and inference content (applied 2026-09-08)
 
 Cloud Armor in front of `api.ayni-ai.com` runs the preconfigured `sqli`, `xss`, `lfi` and `rce`
 rule sets against request bodies. Prompts are arbitrary text, and a security-log workload
-contains path-traversal and SQL strings by nature, so those rules currently deny (403, HTML
-body) exactly the content that use case sends. Reproduced on `POST /v1/workloads`: a prompt
-with `../../etc/passwd` or `UNION SELECT` is refused; benign prompts pass. The coordinator
-parses these bodies as typed JSON, builds no SQL or file paths from them, and relays the text
-sealed to a device.
+contains path-traversal and SQL strings by nature, so those rules denied (403, HTML body)
+exactly the content that use case sends. Reproduced on `POST /v1/workloads`: a prompt with
+`../../etc/passwd` or `UNION SELECT` was refused; benign prompts passed. The coordinator parses
+these bodies as typed JSON, builds no SQL or file paths from them, and relays the text sealed
+to a device.
 
-Proposed change, for the operator to apply: keep every rule as is except the four
-content-inspecting sets, which stop evaluating on the three endpoints that carry inference
-content. Scanner detection, protocol attack and the per-IP throttle still apply there, and the
-public demo endpoint keeps the full WAF.
+Change applied: every rule stays as it was except the four content-inspecting sets, which no
+longer evaluate on the three endpoints that carry inference content. Scanner detection,
+protocol attack and the per-IP throttle still apply there, and every other path, including the
+public demo and quote endpoints, keeps the full WAF. Cloud Armor's regex dialect rejects
+capture groups, so the exclusion uses exact path comparisons; in zsh run `setopt nobanghist`
+first or the `!` is taken as history expansion.
 
 ```bash
 for pair in "2000:sqli-v33-stable" "2001:xss-v33-stable" "2002:lfi-v33-stable" "2003:rce-v33-stable"; do
   gcloud compute security-policies rules update "${pair%%:*}" --security-policy ayni-api-policy \
-    --expression "evaluatePreconfiguredWaf('${pair##*:}', {'sensitivity': 1}) && !request.path.matches('^/v1/(workloads|batch|chat/completions)$')" \
-    --description "WAF ${pair##*:}; inference-content endpoints excluded (prompts carry arbitrary text)"
+    --expression "evaluatePreconfiguredWaf('${pair##*:}', {'sensitivity': 1}) && !(request.path == '/v1/workloads' || request.path == '/v1/batch' || request.path == '/v1/chat/completions')" \
+    --description "WAF ${pair##*:}; inference-content endpoints excluded"
 done
 ```
 
-Verify afterwards: a `POST /v1/workloads` whose prompt contains `../../etc/passwd` returns 201,
-and `GET /healthz?q=../../etc/passwd` still returns 403. The Python client reports a non-JSON
-403 as `edge_blocked` so runners can tell an edge refusal from a coordinator error.
+Verified after propagation (a few minutes): `POST /v1/workloads` with `../../etc/passwd` or
+`UNION SELECT` in the prompt returns 201; `GET /healthz?q=../../etc/passwd` and a `/v1/quote`
+body with `UNION SELECT` still return 403. The Python client reports a non-JSON 403 as
+`edge_blocked` so runners can tell an edge refusal from a coordinator error.
 
 ## Hardening roadmap
 
