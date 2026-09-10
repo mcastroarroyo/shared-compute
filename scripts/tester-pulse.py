@@ -138,12 +138,21 @@ def main() -> int:
         # A benchmark row updated in the last heartbeat window is a device that is online now.
         if now - t > 15 * 60:
             continue
-        last = st["seen"].get(pk, 0)
-        if now - last < QUIET_MINUTES * 60:
+        last_online = st.setdefault("online", {}).get(pk, 0)
+        last_pulse = st["seen"].get(pk, 0)
+        st["online"][pk] = now
+        # Pulse a device that is new, that came back after a gap, or that has not had a
+        # job in six hours (so "a few test jobs a day" stays true for always-on machines).
+        is_new = last_pulse == 0
+        came_back = last_online and (now - last_online) > 30 * 60
+        stale = last_pulse and (now - last_pulse) > 6 * 3600
+        if now - last_pulse < QUIET_MINUTES * 60:
             continue
-        fresh.append(pk)
+        if is_new or came_back or stale:
+            fresh.append(pk)
 
     if not fresh:
+        save_state(st)  # keep last-online timestamps current
         log({"event": "quiet", "online": online})
         return 0
     if spent_today >= DAILY_CAP_USD:
