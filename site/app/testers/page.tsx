@@ -40,6 +40,7 @@ export default function Testers() {
       <ul style={{ lineHeight: 1.8 }}>
         <li>One small model (0.5B) in production; a phone does about 18 tokens per second, a laptop 80 to 160.</li>
         <li>Earnings are real but tiny: cents, not dollars. You are here for the early look and the influence, not the income.</li>
+        <li>Today the network runs small test jobs a few times a day, and every new device gets one within minutes of joining. Paid workloads ramp up as buyers arrive; you are joining the community that makes the network real.</li>
         <li>The Android app is in Google Play internal testing; request access on the testers page with your Google account email.</li>
         <li>Everything is open source (Apache 2.0). Read the code, the threat model and the white paper before you trust a claim.</li>
       </ul>

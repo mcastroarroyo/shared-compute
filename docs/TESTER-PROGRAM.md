@@ -60,47 +60,64 @@ Do not post where the rules forbid self-promotion without reading the rules firs
 (most subreddits allow a "Show" style post with a clear "I built this" and no
 link-only posts). Reply to every comment in the first two hours.
 
-## Drafts
+## Drafts (tone: join the community now; workloads ramp as buyers arrive; cents today)
 
-### A. Technical communities (r/LocalLLaMA, HN, r/selfhosted)
+### A. r/LocalLLaMA (show and tell)
 
-**Title:** Ayni: an open-source marketplace that runs private LLM inference on idle phones and laptops, pays the owners 70%, and never logs a prompt. Looking for testers.
+**Title:** Ayni: open-source network that runs small LLM jobs on idle phones and laptops, encrypted per job. Looking for early devices.
 
-I built Ayni to answer a question that bothered me: billions of capable devices sit idle while inference runs in a few data centers. Ayni turns idle phones, laptops and workstations into a private inference network.
+I have been building Ayni, an open-source (Apache 2.0) way for idle consumer devices to serve small-model inference for other people, and I am opening it to early testers.
 
-What is different:
-- Every job is sealed to one device with a fresh X25519 key; the coordinator relays ciphertext. A CI check fails the build if any code path could log a prompt.
-- Buyers can require hardware-attested devices (Android StrongBox key attestation, verified boot) with one header.
-- One itemised quote for a whole batch, charged once. No bidding, no token, no blockchain. Stripe in, Stripe out.
-- A fail-closed "Council" reviews each workload's shape (counts, tier, price), never its content, and publishes hash-chained decisions.
-- Apache 2.0, Go coordinator + Rust provider on llama.cpp. `make dev`, `make e2e`.
+How it works: your phone or laptop runs a small provider (llama.cpp inside). A coordinator quotes a batch job up front, seals each item to one device with a fresh key, relays ciphertext, and pays the device from what the job was billed. A CI check fails the build if any code path could log a prompt. Buyers can require hardware-attested phones.
 
-Honest status: production runs one 0.5B model on consumer devices; a phone does ~18 tok/s, an M1 Pro ~90. A batch of 10 prompts across two phones and a Mac finishes in about 5 s. Earnings for one phone are cents. Larger classes are priced and scheduled but need GPU providers.
+Where it actually is today: one 0.5B model in production, a handful of devices online, and test jobs a few times a day. A phone does about 18 tok/s, an M-series Mac 80 to 160. Earnings are cents. Paid workloads ramp up as buyers arrive; right now you would be joining the community that makes the network real, not a paycheck.
 
-I am looking for testers with an Android phone or a Mac/Linux box: 10 minutes, one command or a 6-letter pairing code. Feedback goes straight to me.
+What I need: Android phones (any 8+, Pixel and Samsung ideal) and Mac or Linux boxes. Ten minutes: sign in, one command or a six-letter pairing code, done. A test job reaches new devices within minutes so you can see it work. Feedback goes straight to me, in the app or on GitHub Discussions.
 
-app.ayni-ai.com/testers · code: github.com/mcastroarroyo/shared-compute · white paper linked from the site.
+Code, threat model and white paper: github.com/mcastroarroyo/shared-compute · Join: app.ayni-ai.com/testers
 
-### B. Phone-owner communities (r/androidapps)
+### B. r/selfhosted, r/homelab
 
-**Title:** [Testers wanted] Ayni: share your phone's idle time for private AI jobs, get paid per token. Android internal test.
+**Title:** Looking for idle Macs/Linux boxes to join an open-source community inference network (one command, no crypto, cents per job)
 
-Ayni is a small app that runs AI inference jobs on your phone only while it is charging and on Wi-Fi, and pays you a share of what each job was billed. Jobs are encrypted to your phone with a one-time key; nothing is stored, no ads, no tracking, no access to your files.
+I built Ayni, an open-source coordinator plus provider that turns idle machines into a small private inference network. No token, no blockchain: buyers prepay dollars, devices are paid by Stripe.
 
-What I need: Android 8+ phones (Pixel and Samsung ideal, others welcome), 10 minutes, and honest feedback on the pairing flow: you sign in on a computer, get a 6-letter code, type it in the app, done.
+The provider is one binary (Go coordinator, Rust provider with llama.cpp). Install is one command; it dials out over WebSocket, accepts no inbound connections, and only serves while your machine is idle. Jobs are encrypted to your machine's key and never logged.
 
-Be aware: this is an internal test, one small model, and earnings today are cents. What you get is an early look and a direct line to the developer.
+Honest status: one 0.5B model, a handful of devices, test jobs a few times a day. Paid workloads ramp as buyers arrive, so today this is about being part of the community early and shaping it, not income.
 
-Request access at app.ayni-ai.com/testers (use your Google account email).
+Ten minutes to join: app.ayni-ai.com/testers. Code and docs: github.com/mcastroarroyo/shared-compute. I answer every message.
 
-### C. Product Hunt (hold until open testing)
+### C. r/androidapps
 
-Tagline: The world's unused compute, on demand.
-One-liner: Rent private AI inference from a network of idle phones and laptops, or share yours and earn 70% of every job.
+**Title:** [Testers wanted] Ayni: let your phone run small AI jobs while charging, open source, encrypted, cents per job
 
-### D. Personal message
+Ayni is a small Android app that runs AI inference jobs on your phone only while it is charging and on Wi-Fi, and pays a share of what each job billed. Jobs are encrypted to your phone with a one-time key; nothing is stored, no ads, no tracking, no access to your files. Open source.
 
-Hi <name>, I built something and need ten minutes of your time. Ayni lets a phone or laptop earn money running small AI jobs, encrypted so nobody, including me, can read them. Would you install the app (or run one command on your Mac), pair it with a 6-letter code, and tell me what confused you? app.ayni-ai.com/testers has the steps. Screenshots of anything odd are gold. Thank you.
+Status, plainly: this is early. One small model, a few devices, and test jobs a few times a day while the buyer side grows. You would be joining the community that makes the network real; earnings today are cents.
+
+What I need: Android 8+ phones, ten minutes, and honest feedback on the pairing flow (sign in on a computer, get a six-letter code, type it in the app). Testers get the Play link after signing in at app.ayni-ai.com/testers.
+
+### D. Show HN
+
+**Title:** Show HN: Ayni, an open-source network for private LLM inference on idle phones and laptops
+
+Ayni turns idle consumer devices into a small inference network. A Go coordinator quotes a whole batch up front, seals each item to one device's X25519 key, relays ciphertext, verifies token counts itself, and pays the device owner from what the job billed, in dollars through Stripe. A fail-closed "Council" reviews each workload's shape (counts, tier, price), never its content, and publishes hash-chained decisions. Buyers can require hardware-attested Android devices.
+
+Status: one 0.5B model in production, a handful of devices, test jobs a few times a day. Larger classes are priced and scheduled but need GPU providers, and paid workloads ramp as buyers arrive. I am looking for early devices (Android, Mac, Linux) and for people to read the threat model and tell me what is wrong with it.
+
+Code: https://github.com/mcastroarroyo/shared-compute · Join: https://app.ayni-ai.com/testers
+
+### E. Personal message
+
+Hi <name>, I built Ayni, an open-source network that runs small AI jobs on idle phones and laptops, encrypted so nobody, including me, can read them. It is early: a few devices, test jobs a few times a day, earnings are cents. I am putting together the first community of devices and would love yours in it. Ten minutes: app.ayni-ai.com/testers. Tell me what confused you. Thank you.
+
+## Scale path to 1,000 devices
+
+- **Phones:** Play internal testing holds 100 testers by list. The open testing track (Testing → Open testing) lets anyone join from a Play link with no list: select countries, promote the internal release to it, send for review. Do this before posting to phone communities.
+- **Macs and Linux boxes:** no store involved; the one-line installer has no cap.
+- **Every new device gets a job within minutes:** `scripts/tester-pulse.py` runs every ten minutes from launchd on the founders' Mac (`~/Library/LaunchAgents/com.ayni.tester-pulse.plist`), sends a three-to-twelve item job whenever a device appears or returns, and caps spend at $0.50 a day. Log: `~/.ayni/pulse/pulse.jsonl`; `python3 scripts/tester-pulse.py --status`.
+- **Funnel numbers:** `GET /admin/overview` → `users.total`, `users.with_devices`, `providers.known`, `providers.online`. Baseline 2026-09-10: 3 users, 2 with devices, 10 known devices, 1 online.
 
 ## Welcome message for the channel
 
