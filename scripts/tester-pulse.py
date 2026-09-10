@@ -114,29 +114,22 @@ def main() -> int:
         return 1
 
     try:
-        ov = admin_get("/admin/overview")
-        nodes = admin_get("/admin/nodes")
+        prov = admin_get("/admin/providers")
     except (urllib.error.URLError, ValueError, KeyError) as e:
         log({"event": "error", "message": f"admin api: {e}"})
         return 1
 
-    online = ov.get("providers", {}).get("online", 0)
+    rows = prov.get("providers") or []
+    online = len(rows)
     if online == 0:
         log({"event": "idle", "online": 0})
         return 0
 
-    rows = nodes if isinstance(nodes, list) else nodes.get("nodes") or nodes.get("data") or []
     now = time.time()
     fresh: list[str] = []
-    for r in rows:
+    for r in rows:  # connected providers only: static_pk, connected_at, last_seen
         pk = r.get("static_pk", "")
-        upd = r.get("updated_at", "")
-        try:
-            t = datetime.fromisoformat(upd.replace("Z", "+00:00")).timestamp()
-        except ValueError:
-            continue
-        # A benchmark row updated in the last heartbeat window is a device that is online now.
-        if now - t > 15 * 60:
+        if not pk:
             continue
         last_online = st.setdefault("online", {}).get(pk, 0)
         last_pulse = st["seen"].get(pk, 0)
