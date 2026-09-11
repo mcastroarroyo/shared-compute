@@ -120,7 +120,11 @@ Any client that launches a stdio server works. Command `ayni-mcp`, environment a
 
 **Estimate** prices from counts: how many items, average prompt and completion length in
 tokens. Nothing but numbers leaves your machine and no key is needed. Use it to compare
-against a current bill.
+against a current bill. Every price view carries `price_per_1m_tokens_usd`, which is the
+number to compare with any vendor's list price; the per-item figure is shown next to the
+tokens per item that produced it and means nothing without them. For reference, the MICRO
+class is about $0.03 per million input tokens and $0.13 per million output on demand, and
+60% of that on spot.
 
 **Quote** sends the real prompts and returns one itemised price, an ETA, how many
 devices are eligible, and the Council's decision on the workload's shape. A quote is free,

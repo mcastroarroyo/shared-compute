@@ -74,7 +74,8 @@ class FakeCoordinator(BaseHTTPRequestHandler):
             "id": qid, "object": "workload.quote", "model": body.get("model"), "status": "quoted",
             "class": "MICRO", "spot": body.get("spot", False), "tier": body.get("tier", "community"),
             "redundancy": body.get("redundancy", 1), "runnable": runnable,
-            "estimate": {"eta_seconds": 3, "eligible_nodes": 2, "supply_online": True},
+            "estimate": {"items": n, "prompt_tokens": n * ptoks, "completion_tokens": n * ctoks,
+                         "eta_seconds": 3, "eligible_nodes": 2, "supply_online": True},
             "price": self._price(n, ptoks, ctoks, body.get("spot", False)),
             "council": {"proposal_id": qid, "risk_class": "standard", "decision": "APPROVE",
                         "reviews": [{"seat": "security_critic", "decision": "APPROVE"}], "audit_hash": "abc"},
@@ -273,11 +274,16 @@ class TestMCPServer(unittest.TestCase):
         self.assertTrue(est["estimate_only"])
         self.assertGreater(est["price_usd"], 0)
         self.assertEqual(est["scaled_to_items"], 50_000)
+        self.assertEqual(est["tokens_per_item"], 206)
+        self.assertEqual(est["tokens_priced"], 50_000 * 206)
+        self.assertAlmostEqual(est["price_per_1m_tokens_usd"], est["price_usd"] / (50_000 * 206) * 1e6, places=3)
 
         q = c.call("ayni_quote", prompts=["a", "b", "c"], max_tokens=6)["structuredContent"]
         self.assertTrue(q["quote_id"].startswith("wl_"))
         self.assertEqual(q["council"]["decision"], "APPROVE")
         self.assertEqual(q["items"], 3)
+        self.assertGreater(q["tokens_priced"], 0)
+        self.assertGreater(q["price_per_1m_tokens_usd"], 0)
 
         over = c.call("ayni_run", quote_id=q["quote_id"], max_price_usd=0.001)
         self.assertTrue(over["isError"])

@@ -66,8 +66,10 @@ priced up front and charged once at the quoted price. Use these tools in this or
 
 For security logs use ayni_triage_logs (dry run first, then confirm=true) and run
 ayni_triage_selftest before trusting the verdicts: the model in production today is a
-small one and measured quality is published in the guide. Never spend without telling the
-user the quoted price first. If a call returns insufficient_credit, offer ayni_topup_link;
+small one and measured quality is published in the guide. Report prices per million
+tokens (price_per_1m_tokens_usd), which is how every vendor quotes; mention a per-item price
+only together with the tokens per item behind it. Never spend without telling the user the
+quoted price first. If a call returns insufficient_credit, offer ayni_topup_link;
 the user opens the link and pays themselves."""
 
 QUICKSTART = """# Ayni quickstart (MCP)
@@ -80,7 +82,8 @@ QUICKSTART = """# Ayni quickstart (MCP)
    ayni_results (memory-only; fetch promptly).
 5. Out of credit? ayni_topup_link {amount_usd} returns a Stripe Checkout page for a person to open.
 
-Pricing: compute paid to devices x redundancy, +15% coordination, +8%/redundancy failure buffer,
+Pricing is per million tokens (MICRO on demand: about $0.03 input / $0.13 output; spot 60% of
+that); every price view carries price_per_1m_tokens_usd. Build-up: compute paid to devices x redundancy, +15% coordination, +8%/redundancy failure buffer,
 +30% margin, +3% payment, $0.01 floor. Spot = 60% of on-demand, wider ETA. Tier
 device_attested x1.4, confidential x3.0. You are charged the quoted price once, or nothing if
 every item failed.
@@ -105,9 +108,18 @@ def _quote_view(q: Quote) -> dict[str, Any]:
         {"seat": r.get("seat"), "decision": r.get("decision"), "note": r.get("note", "")}
         for r in (council.get("reviews") or [])
     ]
+    # Market-comparable number: every vendor quotes per million tokens. Per-item figures
+    # only make sense next to the token count that produced them.
+    tokens = int(est.get("prompt_tokens") or 0) + int(est.get("completion_tokens") or 0)
+    sf, st = raw.get("scaled_from_items"), raw.get("scaled_to_items")
+    if tokens and sf and st:
+        tokens = int(tokens * (st / sf))
+    per_1m_tokens = round(q.total_usd / tokens * 1_000_000, 4) if tokens else None
     return {
         "quote_id": q.id,
         "model": raw.get("model"),
+        "tokens_priced": tokens or None,
+        "price_per_1m_tokens_usd": per_1m_tokens,
         "tier": raw.get("tier"),
         "spot": raw.get("spot", False),
         "redundancy": raw.get("redundancy", 1),
@@ -294,7 +306,11 @@ class AyniMCP:
         v = _quote_view(q)
         v.pop("quote_id", None)
         v["estimate_only"] = True
+        v["items"] = items
+        v["tokens_per_item"] = int(a.get("avg_input_tokens") or 250) + int(a.get("avg_output_tokens") or 64)
         v["price_per_1m_items_usd"] = round(q.total_usd / items * 1_000_000, 2)
+        v["pricing_note"] = ("Compare on price_per_1m_tokens_usd; the per-item figure assumes "
+                             f"{v['tokens_per_item']} tokens per item.")
         return v
 
     def tool_quote(self, a: dict[str, Any], progress: Callable) -> dict[str, Any]:
@@ -315,6 +331,8 @@ class AyniMCP:
         )
         v = _quote_view(q)
         v["items"] = n
+        if v.get("tokens_priced"):
+            v["tokens_per_item"] = round(v["tokens_priced"] / n)
         v["next"] = ("ayni_run with this quote_id and a max_price_usd at or above price_usd"
                      if v.get("council", {}).get("decision") != "BLOCK" else
                      "council blocked this shape; nothing can run from this quote")

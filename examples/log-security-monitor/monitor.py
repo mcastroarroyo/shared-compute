@@ -124,7 +124,10 @@ def main() -> int:
         print(f"{n:,} log lines")
         print(f"  price      ${q.total_usd:.4f}"
               + (f"  (spot)" if args.spot else "  (on-demand)"))
-        print(f"  per 1M     ${q.total_usd / max(n, 1) * 1_000_000:.2f}")
+        toks = n * (args.avg_input_tokens + args.max_tokens)
+        print(f"  per 1M tokens  ${q.total_usd / max(toks, 1) * 1_000_000:.4f}"
+              f"   (per 1M lines ${q.total_usd / max(n, 1) * 1_000_000:.2f}"
+              f" at {args.avg_input_tokens + args.max_tokens} tokens/line)")
         print(f"  eta        ~{q.eta_seconds}s across {q.eligible_nodes} device(s)"
               + ("" if q.supply_online else " (reference estimate; no matching device online)"))
         for k, v in (q.breakdown_usd or {}).items():
