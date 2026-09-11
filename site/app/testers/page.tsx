@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import FleetCounter from "../fleet-counter";
 
 export const metadata: Metadata = {
   title: "Testers wanted — Ayni",
@@ -20,10 +21,12 @@ export default function Testers() {
         same minute, and you get a direct reply.
       </p>
 
-      <div className="cta" style={{ margin: "24px 0 32px" }}>
+      <div className="cta" style={{ margin: "24px 0 16px" }}>
         <a href={`${APP}/testers/`} className="btn btn-primary">Start testing</a>
         <a href={DISCUSS} className="btn btn-ghost">Tester community</a>
       </div>
+
+      <FleetCounter />
 
       <h2>What you will do</h2>
       <ol style={{ lineHeight: 1.8 }}>

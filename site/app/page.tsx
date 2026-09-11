@@ -2,6 +2,7 @@ import Link from "next/link";
 import { WaitlistForm } from "./waitlist-form";
 import { WorkloadBox } from "./workload-box";
 import { REPO, WHITEPAPER, LICENSE } from "./lib/api";
+import FleetCounter from "./fleet-counter";
 
 export default function Home() {
   return (
@@ -28,6 +29,7 @@ export default function Home() {
         <p className="tags">
           Open source · end-to-end encrypted · benchmarked devices · no prompt logging
         </p>
+        <FleetCounter compact />
       </section>
 
       <section className="wrap">

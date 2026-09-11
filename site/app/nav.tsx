@@ -11,6 +11,7 @@ const links: [string, string, boolean][] = [
   ["/technology/", "Technology", true],
   ["/security/", "Security", true],
   ["/testers/", "Testers", false],
+  ["/status/", "Status", false],
 ];
 
 export function Nav() {

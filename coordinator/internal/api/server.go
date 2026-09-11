@@ -147,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	mux.Handle("GET /v1/models", instrument("v1_models", s.withAuth(s.handleModels)))
 	mux.Handle("GET /v1/manifest-key", instrument("v1_manifest_key", http.HandlerFunc(s.handleManifestKey)))
+	mux.Handle("GET /v1/stats", instrument("v1_stats", http.HandlerFunc(s.handlePublicStats)))
 	mux.Handle("GET /install/provider.sh", instrument("install_provider", http.HandlerFunc(s.handleInstallScript)))
 	// Inference intake goes through s.gate so an operator can pause new work
 	// (503 + Retry-After) without disconnecting providers.
