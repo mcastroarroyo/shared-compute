@@ -58,8 +58,9 @@ print(q.total_usd, q.breakdown_usd)
 The breakdown is the actual cost build-up — compute paid to devices, coordination, a
 failure buffer, payment fees, Ayni's margin — not a bid plus a markup.
 
-Compare prices **per million tokens**, the unit every vendor uses: MICRO is about $0.03 per
-million input tokens and $0.13 per million output on demand, 60% of that on spot. A
+Compare prices **per million tokens**, the unit every vendor uses: the MICRO rate card is
+$0.02 per million input tokens and $0.08 per million output, a quoted workload lands about
+20% above it (about $0.025 and $0.10), and spot is 60% of that. A
 per-item or per-line price is only meaningful next to the tokens per item behind it; a
 220-token log line with a one-word answer is about 226 tokens, so "$6 per million lines" is
 "$0.027 per million tokens".

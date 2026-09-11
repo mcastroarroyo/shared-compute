@@ -64,6 +64,8 @@ export function WorkloadBox() {
 
   const bd = quote?.price.breakdown_usd;
   const total = quote?.price.total_usd ?? 0;
+  const tokens = (quote?.estimate.prompt_tokens ?? 0) + (quote?.estimate.completion_tokens ?? 0);
+  const perMillionTokens = tokens > 0 ? (total / tokens) * 1_000_000 : 0;
   const parts = bd
     ? [
         { k: "Devices", v: bd.compute_acquisition, c: "var(--teal)" },
@@ -164,6 +166,9 @@ export function WorkloadBox() {
               <div>
                 <span className="wbox-k">{spot ? "Spot price" : "Quoted price"}</span>
                 <span className="wbox-price">{usd(total)}</span>
+                {perMillionTokens > 0 ? (
+                  <span className="wbox-k">≈ {usd(perMillionTokens)} per 1M tokens</span>
+                ) : null}
               </div>
               <div>
                 <span className="wbox-k">Est. completion</span>

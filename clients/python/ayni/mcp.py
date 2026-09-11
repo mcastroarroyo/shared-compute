@@ -82,8 +82,8 @@ QUICKSTART = """# Ayni quickstart (MCP)
    ayni_results (memory-only; fetch promptly).
 5. Out of credit? ayni_topup_link {amount_usd} returns a Stripe Checkout page for a person to open.
 
-Pricing is per million tokens (MICRO on demand: about $0.03 input / $0.13 output; spot 60% of
-that); every price view carries price_per_1m_tokens_usd. Build-up: compute paid to devices x redundancy, +15% coordination, +8%/redundancy failure buffer,
+Pricing is per million tokens (MICRO rate card $0.02 input / $0.08 output; a quoted workload
+lands about 20% above it; spot 60% of that); every price view carries price_per_1m_tokens_usd. Build-up: compute paid to devices x redundancy, +15% coordination, +8%/redundancy failure buffer,
 +30% margin, +3% payment, $0.01 floor. Spot = 60% of on-demand, wider ETA. Tier
 device_attested x1.4, confidential x3.0. You are charged the quoted price once, or nothing if
 every item failed.

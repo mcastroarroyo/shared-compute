@@ -127,22 +127,68 @@ curl -X POST https://api.ayni-ai.com/v1/workloads/wl_.../accept \\
         <h2>Pricing</h2>
         <div className="prose">
           <p>
-            Prepaid credits, billed per token by model class, with a multiplier for
-            higher trust tiers. Launch rates are placeholders and will be set with
-            the community before general availability. Indicative, per 1M tokens:
+            Prepaid credits, billed per million tokens by model class, the same unit
+            every hosted model uses. Chat and batch are metered at the rate card; a
+            quoted workload adds coordination, a failure buffer and payment cost on
+            top of the provider&rsquo;s share, which lands about 20% above it. Launch
+            rates are placeholders and will be set with the community before general
+            availability. Per 1M tokens, input / output:
           </p>
           <ul>
-            <li>Small models (≤8B): ~$0.05 in / ~$0.20 out</li>
-            <li>Medium (12–30B quantized): ~$0.15 in / ~$0.60 out</li>
+            <li>Micro (≤3B, live today): $0.02 / $0.08 · spot 60% of that</li>
+            <li>Small (3–8B): $0.05 / $0.20</li>
+            <li>Medium (12–30B quantized): $0.15 / $0.60</li>
             <li>
               <code>device_attested</code> &times;1.4 · <code>confidential</code>{" "}
               &times;3
             </li>
           </ul>
+          <p>
+            Compare on that number, not on a per-item price. A 220-token log line
+            with a one-word answer is about 226 tokens, so one million of them cost
+            about $6 on the micro class: $0.027 per million tokens. For reference,
+            hosted open models of 1–8B list at roughly $0.02–0.10 per million
+            tokens, the commercial nano tier at $0.10–0.40, and mid-tier cloud
+            models at $0.30–2.50 (list prices, approximate, batch tiers about half).
+          </p>
           <p className="note">
             70% of what you pay goes to the provider that served you; the rest funds
             the coordinator, the community treasury, and the AI-stakeholder
             allocation.
+          </p>
+        </div>
+      </section>
+
+      <section className="wrap">
+        <h2>What runs well on the micro class today</h2>
+        <div className="prose">
+          <p>
+            The live model is 0.5B. It is fast and cheap, and it does not reason. The
+            workloads that fit are mechanical, short, constrained and large:
+          </p>
+          <ul>
+            <li>
+              <b>Normalize and extract.</b> Raw audit, syslog or CloudTrail events into
+              one JSON schema: actor, action, target, source, time. Severity by
+              deterministic rules on top.
+            </li>
+            <li>
+              <b>Closed-set labelling.</b> Tickets, alerts or documents against a fixed
+              list of ten to twenty categories with worked examples.
+            </li>
+            <li>
+              <b>Embeddings</b> for semantic search (on the roadmap: one endpoint).
+            </li>
+            <li>
+              <b>Integrity by redundancy.</b> The same item on three devices in three
+              countries with a majority vote, in one call.
+            </li>
+          </ul>
+          <p className="note">
+            Judgment (&ldquo;is this an incident?&rdquo;) belongs to the small and
+            medium classes on laptops and GPUs. Every price view returns the price
+            per million tokens, and a built-in self-test scores the model on
+            labelled lines before any money is spent.
           </p>
         </div>
       </section>

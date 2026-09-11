@@ -8,7 +8,7 @@ const MODEL = "qwen2.5-0.5b-instruct-q4_k_m";
 type Quote = {
   id: string;
   price: { total_usd: number };
-  estimate: { eta_seconds: number; eligible_nodes: number };
+  estimate: { eta_seconds: number; eligible_nodes: number; prompt_tokens?: number; completion_tokens?: number };
   council: {
     decision: string;
     reviews: { seat: string; role: string; decision: string; severity: string }[];
@@ -149,6 +149,20 @@ export default function Run() {
             <span>Quoted price</span>
             <span className="big">${quote.price.total_usd.toFixed(2)}</span>
           </div>
+          {(quote.estimate.prompt_tokens ?? 0) + (quote.estimate.completion_tokens ?? 0) > 0 && (
+            <div className="kv">
+              <span>Per 1M tokens</span>
+              <span>
+                $
+                {(
+                  (quote.price.total_usd /
+                    ((quote.estimate.prompt_tokens ?? 0) + (quote.estimate.completion_tokens ?? 0))) *
+                  1_000_000
+                ).toFixed(3)}
+                {" "}({(quote.estimate.prompt_tokens ?? 0) + (quote.estimate.completion_tokens ?? 0)} tokens)
+              </span>
+            </div>
+          )}
           <div className="kv">
             <span>Est. completion</span>
             <span>{humanETA(quote.estimate.eta_seconds)}</span>
