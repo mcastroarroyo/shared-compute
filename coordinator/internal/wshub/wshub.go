@@ -223,23 +223,26 @@ func (h *Hub) dispatch(c *conn, p *registry.Provider, frame protocol.Frame) {
 		var br protocol.BenchmarkReport
 		_ = frame.As(&br)
 		pk := base64.StdEncoding.EncodeToString(p.StaticPK[:])
-		fp := capability.Fingerprint{
+		// The provider benchmarks itself and sends the numbers, so this is a claim,
+		// not a measurement we witnessed. Clamp it before anything scores or stores
+		// it, so a node cannot inflate its ACU and pull work it cannot serve.
+		fp := capability.Sanitize(capability.Fingerprint{
 			Model: br.Model, Backend: br.Backend,
 			PrefillTPS: br.PrefillTPS, DecodeTPS: br.DecodeTPS,
 			SustainedStartTPS: br.SustainedStartTPS, SustainedEndTPS: br.SustainedEndTPS,
 			MemBandwidthGBps: br.MemBandwidthGBps, AvailableRAMMB: br.AvailableRAMMB,
 			CPUCores: br.CPUCores, ThermalState: br.ThermalState,
-		}
+		})
 		h.Log.Info("benchmark_report", "provider_id", p.ID, "model", br.Model,
 			"decode_tps", br.DecodeTPS, "sustained_end_tps", br.SustainedEndTPS,
 			"mem_gbps", br.MemBandwidthGBps, "acu", capability.ACU(fp),
 			"class", capability.Class(fp))
 		if err := h.Store.UpsertNodeCapability(context.Background(), store.NodeCapabilityRow{
-			StaticPK: pk, Model: br.Model, Backend: br.Backend,
-			PrefillTPS: br.PrefillTPS, DecodeTPS: br.DecodeTPS,
-			SustainedStartTPS: br.SustainedStartTPS, SustainedEndTPS: br.SustainedEndTPS,
-			MemBandwidthGBps: br.MemBandwidthGBps, AvailableRAMMB: br.AvailableRAMMB,
-			CPUCores: br.CPUCores, ThermalState: br.ThermalState,
+			StaticPK: pk, Model: fp.Model, Backend: fp.Backend,
+			PrefillTPS: fp.PrefillTPS, DecodeTPS: fp.DecodeTPS,
+			SustainedStartTPS: fp.SustainedStartTPS, SustainedEndTPS: fp.SustainedEndTPS,
+			MemBandwidthGBps: fp.MemBandwidthGBps, AvailableRAMMB: fp.AvailableRAMMB,
+			CPUCores: fp.CPUCores, ThermalState: fp.ThermalState,
 		}); err != nil {
 			h.Log.Warn("upsert node capability failed", "err", err)
 		}

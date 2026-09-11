@@ -35,6 +35,18 @@ jobs:
       - run: npm ci
       # Static exports ship no server deps; fail only on high/critical in the shipped tree.
       - run: npm audit --omit=dev --audit-level=high
+  llama-cpp-cves:
+    # The C++ we vendor through llama-cpp-sys-2 belongs to no package ecosystem, so
+    # cargo-audit, govulncheck, npm audit and pip-audit all miss it. This is the only
+    # watcher on the code that parses model files and prompts on a provider's phone.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # On the weekly sweep an unreachable NVD is itself a failure; on a pull request
+      # it must not block unrelated work.
+      - run: python3 scripts/check-llama-cpp-cves.py ${{ github.event_name == 'schedule' && '--strict' || '' }}
   gitleaks:
     runs-on: ubuntu-latest
     steps:

@@ -242,9 +242,50 @@ private fun App() {
             Field("Registration token", s.registrationToken) { s = s.copy(registrationToken = it) }
             Field("Model", s.model) { s = s.copy(model = it) }
             Field("Backend (mock / llama)", s.backend) { s = s.copy(backend = it) }
-            Field("Manifest URL", s.manifestUrl) { s = s.copy(manifestUrl = it) }
-            Field("Registry pubkey", s.registryPubkey) { s = s.copy(registryPubkey = it) }
-            Field("Manifest signing key", s.manifestVerifyKey) { s = s.copy(manifestVerifyKey = it) }
+            // These three are the device's trust anchors, not ordinary preferences.
+            // The registry key decides which model files this phone will load, and the
+            // manifest key decides which coordinator may hand it work. Replacing either
+            // hands both decisions to whoever supplied the replacement, so they are
+            // read-only until the operator deliberately unlocks them.
+            var anchorsUnlocked by remember { mutableStateOf(false) }
+            val defaults = remember { ProviderSettings() }
+            val anchorsChanged = s.manifestUrl != defaults.manifestUrl ||
+                s.registryPubkey != defaults.registryPubkey ||
+                s.manifestVerifyKey != defaults.manifestVerifyKey
+
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Verification keys",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                "Ayni only runs model files signed by the registry key, and only accepts work " +
+                    "signed by the coordinator key. Change these and this phone will trust " +
+                    "whoever holds the keys you paste. Nobody from Ayni will ever ask you to.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (anchorsChanged) {
+                Text(
+                    "These no longer match the keys the app shipped with.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Toggle("Let me edit the verification keys", anchorsUnlocked) { anchorsUnlocked = it }
+            Field("Manifest URL", s.manifestUrl, readOnly = !anchorsUnlocked) { s = s.copy(manifestUrl = it) }
+            Field("Registry pubkey", s.registryPubkey, readOnly = !anchorsUnlocked) { s = s.copy(registryPubkey = it) }
+            Field("Manifest signing key", s.manifestVerifyKey, readOnly = !anchorsUnlocked) { s = s.copy(manifestVerifyKey = it) }
+            if (anchorsChanged) {
+                TextButton(onClick = {
+                    s = s.copy(
+                        manifestUrl = defaults.manifestUrl,
+                        registryPubkey = defaults.registryPubkey,
+                        manifestVerifyKey = defaults.manifestVerifyKey,
+                    )
+                }) { Text("Restore Ayni's keys") }
+            }
+            Spacer(Modifier.height(4.dp))
 
             Toggle("Only while charging", s.onlyWhenCharging) { s = s.copy(onlyWhenCharging = it) }
             Toggle("Only on Wi-Fi", s.onlyOnWifi) { s = s.copy(onlyOnWifi = it) }
@@ -506,11 +547,13 @@ private fun redeemPairCode(apiBase: String, code: String): Result<Pair<String, S
 private fun Field(
     label: String, value: String,
     keyboard: KeyboardType = KeyboardType.Text,
+    readOnly: Boolean = false,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = value, onValueChange = onChange, label = { Text(label) },
         singleLine = true, modifier = Modifier.fillMaxWidth(),
+        readOnly = readOnly,
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
     )
 }
