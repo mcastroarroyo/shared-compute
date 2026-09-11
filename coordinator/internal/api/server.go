@@ -167,6 +167,10 @@ func (s *Server) Handler() http.Handler {
 	// Device onboarding + tester feedback (see onboard.go).
 	mux.Handle("POST /v1/pair/{code}", instrument("pair_redeem", http.HandlerFunc(s.handlePairRedeem)))
 	mux.Handle("GET /v1/me/devices", instrument("my_devices", http.HandlerFunc(s.handleMyDevices)))
+	mux.Handle("GET /v1/me/referral", instrument("my_referral", http.HandlerFunc(s.handleMyReferral)))
+	mux.Handle("POST /v1/me/referral/claim", instrument("my_referral_claim", http.HandlerFunc(s.handleClaimReferral)))
+	mux.Handle("POST /v1/me/profile", instrument("my_profile", http.HandlerFunc(s.handleMyProfile)))
+	mux.Handle("GET /v1/leaderboard", instrument("v1_leaderboard", http.HandlerFunc(s.handleLeaderboard)))
 	mux.Handle("POST /v1/feedback", instrument("feedback", http.HandlerFunc(s.handleFeedback)))
 	mux.Handle("GET /v1/me/feedback", instrument("my_feedback", http.HandlerFunc(s.handleMyFeedback)))
 	mux.Handle("POST /v1/me/feedback/{id}/reply", instrument("my_feedback_reply", http.HandlerFunc(s.handleMyFeedbackReply)))

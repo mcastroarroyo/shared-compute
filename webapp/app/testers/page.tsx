@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type Me, type FeedbackThread } from "../lib/api";
+import InviteCard from "../invite-card";
 
 const PLAY_TEST_URL = "https://play.google.com/apps/internaltest/4701333072640107331";
 // Community channel: GitHub Discussions on the public repo (testers already sign in with GitHub).
@@ -93,6 +94,8 @@ export default function Testers() {
           </p>
         </div>
       </div>
+
+      {me && <InviteCard />}
 
       {CHAT_URL && (
         <div className="card" style={{ marginBottom: 18 }}>

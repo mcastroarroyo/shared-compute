@@ -25,6 +25,24 @@ async function req(path: string, init?: RequestInit) {
   return body;
 }
 
+export type Referral = {
+  code: string;
+  link: string;
+  referred_users: number;
+  referred_devices: number;
+  display_name: string;
+  leaderboard_opt_in: boolean;
+  founding_rank: number;
+  founding: boolean;
+  founding_cap: number;
+};
+
+export type Leaderboard = {
+  rows: { rank: number; display_name: string; devices: number; referred_users: number; referred_devices: number }[];
+  founding_devices: number;
+  founding_cap: number;
+};
+
 export type Me = {
   user: { id: string; email: string; name: string; avatar_url: string };
   api_key_id: string;
@@ -35,6 +53,14 @@ export type Me = {
 export const api = {
   providers: (): Promise<{ providers: string[] }> => req("/auth/providers"),
   me: (): Promise<Me> => req("/v1/me"),
+
+  // Referral links, founding-device recognition and the opt-in leaderboard.
+  referral: (): Promise<Referral> => req("/v1/me/referral"),
+  claimReferral: (code: string): Promise<{ applied: boolean }> =>
+    req("/v1/me/referral/claim", { method: "POST", body: JSON.stringify({ code }) }),
+  setProfile: (p: { display_name: string; leaderboard_opt_in: boolean }): Promise<{ ok: boolean }> =>
+    req("/v1/me/profile", { method: "POST", body: JSON.stringify(p) }),
+  leaderboard: (): Promise<Leaderboard> => req("/v1/leaderboard"),
   logout: () => req("/auth/logout", { method: "POST" }),
 
   quoteWorkload: (input: {

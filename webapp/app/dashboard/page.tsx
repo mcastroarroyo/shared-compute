@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type Me } from "../lib/api";
+import InviteCard from "../invite-card";
 
 export default function Dashboard() {
   const [me, setMe] = useState<Me | null>(null);
@@ -47,6 +48,8 @@ export default function Dashboard() {
           Add $10
         </button>
       </p>
+
+      <InviteCard />
 
       <div className="grid c3">
         <Link href="/share/" className="card">

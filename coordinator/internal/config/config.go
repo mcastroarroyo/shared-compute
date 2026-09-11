@@ -39,6 +39,8 @@ type Config struct {
 	StripeConnectWebhookSecret string
 	// PublicBaseURL is where Stripe Checkout redirects back to (the console or site).
 	PublicBaseURL string
+	// AppBaseURL is the signed-in web app, used to build invite links.
+	AppBaseURL string
 	// BillingEnforce, when true, rejects inference from a consumer key with a
 	// non-positive credit balance (402). Off by default so nothing breaks until opt-in.
 	BillingEnforce bool
@@ -120,6 +122,7 @@ func Load() (Config, error) {
 		StripeWebhookSecret:        getenv("SC_STRIPE_WEBHOOK_SECRET", ""),
 		StripeConnectWebhookSecret: getenv("SC_STRIPE_CONNECT_WEBHOOK_SECRET", ""),
 		PublicBaseURL:              strings.TrimRight(getenv("SC_PUBLIC_BASE_URL", "https://ayni-ai.com"), "/"),
+		AppBaseURL:                 strings.TrimRight(getenv("SC_APP_BASE_URL", "https://app.ayni-ai.com"), "/"),
 		BillingEnforce:             getenv("SC_BILLING_ENFORCE", "") == "1",
 		PriceMultiplier:            getenvFloat("SC_PRICE_MULTIPLIER", 1.0),
 		MarketplaceMargin:          getenvFloat("SC_MARKETPLACE_MARGIN", 0.30),
