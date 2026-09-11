@@ -181,7 +181,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /payouts/webhook", instrument("payouts_webhook", http.HandlerFunc(s.handlePayoutWebhook)))
 
 	// Sample Stripe Connect integration (onboard, products, storefront, charges).
-	if h, err := connectdemo.New(s.cfg.StripeSecretKey, s.cfg.StripeConnectWebhookSecret,
+	// Unauthenticated and it writes to the live Stripe account, so it is opt-in and
+	// off by default. Never enable it on a coordinator that holds live keys.
+	if !s.cfg.ConnectDemoEnabled {
+		s.log.Info("connect demo not mounted", "reason", "SC_CONNECT_DEMO_ENABLED is not 1")
+	} else if h, err := connectdemo.New(s.cfg.StripeSecretKey, s.cfg.StripeConnectWebhookSecret,
 		s.cfg.PublicBaseURL, s.log); err != nil {
 		s.log.Info("connect demo not mounted", "reason", err)
 	} else {

@@ -97,6 +97,11 @@ type Config struct {
 	// DemoEnabled turns on the public, no-sign-up investor demo endpoints
 	// (POST /v1/demo/summarize, GET /v1/demo/last-job). Off by default.
 	DemoEnabled bool
+	// ConnectDemoEnabled mounts the sample Stripe Connect integration at /connect/.
+	// It is UNAUTHENTICATED and creates real objects on the configured Stripe
+	// account, so it must never default on: mounting used to be implied by having
+	// Stripe keys, which is always true in production.
+	ConnectDemoEnabled bool
 
 	// --- Ayni Council workload review ---
 	// One real model seat on the Council that reviews each workload before it is
@@ -143,6 +148,7 @@ func Load() (Config, error) {
 		AppURL:                     strings.TrimRight(getenv("SC_APP_URL", "https://app.ayni-ai.com"), "/"),
 		CookieDomain:               getenv("SC_COOKIE_DOMAIN", ".ayni-ai.com"),
 		DemoEnabled:                getenv("SC_DEMO_ENABLED", "") == "1",
+		ConnectDemoEnabled:         getenv("SC_CONNECT_DEMO_ENABLED", "") == "1",
 		CouncilModelAPI:            getenv("SC_COUNCIL_MODEL_API", ""),
 		CouncilModelKey:            getenv("SC_COUNCIL_MODEL_KEY", ""),
 		CouncilModelID:             getenv("SC_COUNCIL_MODEL_ID", ""),
