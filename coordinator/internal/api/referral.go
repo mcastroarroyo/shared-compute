@@ -17,7 +17,7 @@ import (
 const foundingDeviceCap = 1000
 
 func (s *Server) joinBase() string {
-	if b := strings.TrimRight(s.cfg.AppBaseURL, "/"); b != "" {
+	if b := strings.TrimRight(s.cfg.AppURL, "/"); b != "" {
 		return b
 	}
 	return "https://app.ayni-ai.com"
